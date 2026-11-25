@@ -103,6 +103,8 @@ http.createServer(async(q,r)=>{
    else if(b.op==='delGroup'){M.groups=M.groups.filter(x=>x!==g);for(const k of Object.keys(M.att))if(k.startsWith(g.id+'|'))delete M.att[k];for(const k of Object.keys(M.pay))if(k.startsWith(g.id+'|'))delete M.pay[k];}
    else if(b.op==='addStudent'){if(!S(b.name))return json(r,400,{error:'name'});g.students.push({id:id(),name:S(b.name),phone:String(b.phone||'').replace(/[^0-9]/g,'').slice(0,20)});}
    else if(b.op==='delStudent'){g.students=g.students.filter(x=>x.id!==b.sid);}
+   else if(b.op==='editStudent'){const st=g.students.find(x=>x.id===b.sid);if(!st||!S(b.name))return json(r,400,{error:'student'});st.name=S(b.name);st.phone=String(b.phone||'').replace(/[^0-9]/g,'').slice(0,20);}
+   else if(b.op==='reorder'){const o=Array.isArray(b.order)?b.order:[];const mp=new Map(g.students.map(x=>[x.id,x]));const ns=[];for(const i of o)if(mp.has(i)){ns.push(mp.get(i));mp.delete(i)}for(const x of mp.values())ns.push(x);g.students=ns;}
    else if(b.op==='fromCodes'){const have=new Set(M.groups.flatMap(x=>x.students.map(y=>y.code).filter(Boolean)));for(const c of db.codes)if(c.student&&!have.has(c.code))g.students.push({id:id(),name:c.student.name,phone:c.student.phone,code:c.code});}
    else if(b.op==='addSched'){const dy=+b.day,tm=String(b.time||''),du=Math.min(600,Math.max(10,+b.dur||60));if(!(dy>=0&&dy<=6)||!/^\d{2}:\d{2}$/.test(tm))return json(r,400,{error:'sched'});g.sched=g.sched||[];g.sched.push({id:id(),day:dy,time:tm,dur:du});}
    else if(b.op==='delSched'){g.sched=(g.sched||[]).filter(x=>x.id!==b.sid);}
