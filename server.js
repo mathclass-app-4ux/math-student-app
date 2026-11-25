@@ -21,6 +21,7 @@ const LINKS={whatsapp:'https://wa.me/201142104969',facebook:[
  {name:'Page 1',url:'https://www.facebook.com/share/1J3ZLst87q/'},
  {name:'Group',url:'https://www.facebook.com/share/g/14wPVxcD8uP/'},
  {name:'Page 2',url:'https://www.facebook.com/share/1JDvGSC1Cd/'}],phone:'01142104969'};
+const SOLVER_KEY=process.env.SOLVER_KEY||'mrk-solver-7f3a9c',SOLVER_DAY_ALL=+process.env.SOLVER_DAY_ALL||1800,SOLVER_DAY_DEV=+process.env.SOLVER_DAY_DEV||12,SOLVER_DAY_IP=+process.env.SOLVER_DAY_IP||30;let SL={d:'',all:0,dev:{},ip:{}};
 const id=()=>crypto.randomBytes(6).toString('hex');
 const json=(r,c,o)=>{r.writeHead(c,{'Content-Type':'application/json','Cache-Control':'no-store'});r.end(JSON.stringify(o))};
 const body=q=>new Promise(res=>{let b=[],n=0;q.on('data',d=>{n+=d.length;if(n<12e6)b.push(d)});q.on('end',()=>{try{res(JSON.parse(Buffer.concat(b)))}catch{res({})}})});
@@ -63,6 +64,24 @@ http.createServer(async(q,r)=>{
  const sess=db.sessions[tok],isAdmin=sess&&sess.role==='admin',isStudent=sess&&sess.role==='student';
  try{
  if(p.startsWith('/api/')){
+  if(p==='/api/solver'){
+   const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type,X-App-Key,X-Device','Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Max-Age':'86400'};
+   if(q.method==='OPTIONS'){r.writeHead(204,cors);return r.end()}
+   const cj=(c,o)=>{r.writeHead(c,{'Content-Type':'application/json','Cache-Control':'no-store',...cors});r.end(JSON.stringify(o))};
+   if(q.method!=='POST') return cj(405,{error:'method'});
+   if(SOLVER_KEY&&q.headers['x-app-key']!==SOLVER_KEY) return cj(403,{error:'bad_app'});
+   const dev=String(q.headers['x-device']||'').replace(/[^\w-]/g,'').slice(0,40);
+   if(dev.length<8) return cj(403,{error:'bad_app'});
+   const ip=String(q.headers['x-forwarded-for']||q.socket.remoteAddress||'').split(',')[0].trim();
+   const b=await body(q),det=!!b.detect,d=day();
+   if(SL.d!==d){SL={d,all:0,dev:{},ip:{}}}
+   const w=det?1:3;
+   if(SL.all+w>SOLVER_DAY_ALL) return cj(429,{error:'busy'});
+   if((SL.dev[dev]||0)+w>SOLVER_DAY_DEV*3||(SL.ip[ip]||0)+w>SOLVER_DAY_IP*3) return cj(429,{error:'daily_limit'});
+   if(b.image&&String(b.image).length>6e6) return cj(413,{error:'too_big'});
+   const out=await solve(det?'':String(b.text||'').slice(0,3000),b.image,det?{detect:true}:{pick:b.pick});
+   if(!out.error){SL.all+=w;SL.dev[dev]=(SL.dev[dev]||0)+w;SL.ip[ip]=(SL.ip[ip]||0)+w}
+   return cj(out.error==='empty'?400:out.error?502:200,out);}
   if(p==='/api/status') return json(r,200,{open:!!db.settings.open,closed:!!db.settings.closed});
   if(p==='/api/signup'&&q.method==='POST'){
    const b=await body(q);
