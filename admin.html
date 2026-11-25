@@ -20,7 +20,8 @@ async function tg(c){await api('codes/toggle',{code:c});show()}
 async function dl(p,k,v){if(confirm('متأكد؟')){await api(p,{[k]:v});show()}}
 async function ph(c){const r=await fetch('/api/student-photo?code='+c,{headers:{Authorization:'Bearer '+token}});if(!r.ok)return;const w=window.open();w.document.write('<img style="max-width:100%" src="'+URL.createObjectURL(await r.blob())+'">')}
 const rd=f=>new Promise(r=>{const x=new FileReader;x.onload=()=>r(x.result);x.readAsDataURL(f)});
-async function post(){const images=await Promise.all([...$('#pi').files].map(rd));await api('posts',{kind:$('#pk').value,title:$('#pt').value,text:$('#px').value,images});show()}
+const shrink=(f,max=1600)=>rd(f).then(u=>new Promise(r=>{const i=new Image;i.onload=()=>{const k=Math.min(1,max/Math.max(i.width,i.height));const c=document.createElement('canvas');c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.85))};i.onerror=()=>r(null);i.src=u}));
+async function post(){const fs=[...$('#pi').files];const images=(await Promise.all(fs.map(f=>shrink(f)))).filter(Boolean);if(fs.length&&!images.length)return alert('الصورة مش مدعومة، جرب صورة JPG أو PNG');const j=await api('posts',{kind:$('#pk').value,title:$('#pt').value,text:$('#px').value,images});if(j.error)return alert('فشل النشر: '+j.error);show()}
 async function addq(){await api('questions',{subject:$('#qs').value,question:$('#qq').value,direct:$('#qd').value,explained:$('#qe').value});show()}
 token?show():login();
 </script></body></html>
