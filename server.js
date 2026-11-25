@@ -6,6 +6,7 @@ const DATA=path.join(__dirname,'data'),DB=path.join(DATA,'db.json'),UP=path.join
 fs.mkdirSync(UP,{recursive:true});
 let db={codes:[],posts:[],questions:[],sessions:{},logs:[],solves:{},settings:{secure:true}};
 if(fs.existsSync(DB)) db=Object.assign(db,JSON.parse(fs.readFileSync(DB)));
+db.mg=db.mg||{groups:[],att:{},pay:{}};
 const save=()=>fs.writeFileSync(DB,JSON.stringify(db));
 const LINKS={whatsapp:'https://wa.me/201142104969',facebook:[
  {name:'Page 1',url:'https://www.facebook.com/share/1J3ZLst87q/'},
@@ -93,13 +94,27 @@ http.createServer(async(q,r)=>{
   if(p==='/api/posts/delete'){const b=await body(q);db.posts=db.posts.filter(x=>x.id!==b.id);save();return json(r,200,{ok:1});}
   if(p==='/api/questions'&&q.method==='POST'){const b=await body(q);const x={id:id(),subject:b.subject||'',question:b.question||'',direct:b.direct||'',explained:b.explained||'',date:Date.now()};db.questions.unshift(x);save();return json(r,200,x);}
   if(p==='/api/questions/delete'){const b=await body(q);db.questions=db.questions.filter(x=>x.id!==b.id);save();return json(r,200,{ok:1});}
+  if(p==='/api/mg'&&q.method==='GET') return json(r,200,db.mg);
+  if(p==='/api/mg'&&q.method==='POST'){const b=await body(q),M=db.mg,S=x=>String(x||'').slice(0,80);const g=M.groups.find(x=>x.id===b.gid);
+   const D=/^\d{4}-\d{2}-\d{2}$/,MO=/^\d{4}-\d{2}$/;
+   if(b.op==='addGroup'){if(!S(b.name))return json(r,400,{error:'name'});M.groups.push({id:id(),name:S(b.name),fee:Math.max(0,+b.fee||0),students:[]});}
+   else if(!g) return json(r,404,{error:'group'});
+   else if(b.op==='editGroup'){if(S(b.name))g.name=S(b.name);g.fee=Math.max(0,+b.fee||0);}
+   else if(b.op==='delGroup'){M.groups=M.groups.filter(x=>x!==g);for(const k of Object.keys(M.att))if(k.startsWith(g.id+'|'))delete M.att[k];for(const k of Object.keys(M.pay))if(k.startsWith(g.id+'|'))delete M.pay[k];}
+   else if(b.op==='addStudent'){if(!S(b.name))return json(r,400,{error:'name'});g.students.push({id:id(),name:S(b.name),phone:String(b.phone||'').replace(/[^0-9]/g,'').slice(0,20)});}
+   else if(b.op==='delStudent'){g.students=g.students.filter(x=>x.id!==b.sid);}
+   else if(b.op==='fromCodes'){const have=new Set(M.groups.flatMap(x=>x.students.map(y=>y.code).filter(Boolean)));for(const c of db.codes)if(c.student&&!have.has(c.code))g.students.push({id:id(),name:c.student.name,phone:c.student.phone,code:c.code});}
+   else if(b.op==='setAtt'){if(!D.test(b.date||''))return json(r,400,{error:'date'});const k=g.id+'|'+b.date;M.att[k]=M.att[k]||{};const ids=b.sid==='*'?g.students.map(x=>x.id):[b.sid];for(const i of ids){if(b.status==='present'||b.status==='absent')M.att[k][i]=b.status;else delete M.att[k][i];}if(!Object.keys(M.att[k]).length)delete M.att[k];}
+   else if(b.op==='setPay'){if(!MO.test(b.month||''))return json(r,400,{error:'month'});const k=g.id+'|'+b.month;M.pay[k]=M.pay[k]||{};if(b.paid)M.pay[k][b.sid]=String(b.date||'').slice(0,10);else delete M.pay[k][b.sid];}
+   else return json(r,400,{error:'op'});
+   save();return json(r,200,M);}
   return json(r,404,{error:'not found'});
  }
  if(p.startsWith('/uploads/')){ // news images only (top images are never served here)
   const f=path.basename(p);const okNews=db.posts.some(x=>x.kind!=='top'&&x.images.includes('/uploads/'+f));
   if(!okNews){r.writeHead(403);return r.end('no')}
   const fp=path.join(UP,f);return fs.readFile(fp,(e,d)=>{if(e){r.writeHead(404);return r.end('not found')}r.writeHead(200,{'Content-Type':types[path.extname(fp)]||'application/octet-stream'});r.end(d)});}
- const f=path.join(__dirname,{'/':'index.html','/admin':'admin.html','/style.css':'style.css','/sw.js':'sw.js'}[p]||'404');
+ const f=path.join(__dirname,{'/':'index.html','/admin':'admin.html','/manage':'manage.html','/style.css':'style.css','/sw.js':'sw.js'}[p]||'404');
  fs.readFile(f,(e,d)=>{if(e){r.writeHead(404);return r.end('not found')}r.writeHead(200,{'Content-Type':types[path.extname(f)]||'application/octet-stream'});r.end(d)});
  }catch(e){console.error(e);if(!r.headersSent)json(r,500,{error:'server'})}
 }).listen(PORT,()=>console.log('http://localhost:'+PORT));
