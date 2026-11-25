@@ -1,0 +1,38 @@
+<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>الحضور والمصروفات</title><link rel="stylesheet" href="style.css">
+<style>.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e2e8f0}.row b{flex:1}.bt{display:flex;gap:6px}.bt button{padding:8px 12px;margin:0;background:#e2e8f0;color:#1b2430}.bt button.p{background:#16a34a;color:#fff}.bt button.a{background:#dc2626;color:#fff}.bt button.wa{background:#25d366;color:#fff}
+.stat{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.stat span{background:#eef2ff;border-radius:10px;padding:6px 10px;font-weight:700}.tabs button{flex:1}select{font:inherit;padding:10px;border-radius:8px;border:1px solid #cbd5e1;width:100%;margin:4px 0}small{color:#64748b}</style></head><body>
+<header>📋 الحضور والمصروفات (المشرف فقط)</header><main id="app"></main>
+<script>
+const $=s=>document.querySelector(s),app=$('#app'),token=localStorage.at;let M=null,G=null,T='att',DT=new Date().toISOString().slice(0,10),MO=DT.slice(0,7);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(b){const r=await fetch('/api/mg',{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined});if(r.status==401||r.status==403){location='/admin';throw 0}const j=await r.json();if(!r.ok)throw new Error(j.error);return j}
+async function act(b){try{M=await api(b);draw()}catch(e){alert('حصل خطأ: '+(e&&e.message))}}
+const grp=()=>M.groups.find(g=>g.id===G);
+async function init(){if(!token){location='/admin';return}M=await api();G=(M.groups[0]||{}).id;draw()}
+function draw(){const g=grp();if(!M.groups.some(x=>x.id===G))G=(M.groups[0]||{}).id;
+ let h=`<div class=card><a href=/admin><button class=sec>← رجوع للوحة</button></a></div><div class=card><h3>المجموعات</h3>`;
+ h+=M.groups.length?`<select onchange="G=this.value;draw()">${M.groups.map(x=>`<option value="${x.id}" ${x.id===G?'selected':''}>${esc(x.name)} (${x.students.length} طالب)</option>`).join('')}</select>`:'<p>لا توجد مجموعات. اعمل أول مجموعة.</p>';
+ h+=`<input id=gn placeholder="اسم مجموعة جديدة"><input id=gf type=number placeholder="المصروف الشهري (جنيه)"><button onclick="act({op:'addGroup',name:$('#gn').value,fee:$('#gf').value})">+ إضافة مجموعة</button></div>`;
+ const c=grp();
+ if(c){h+=`<div class=tabs><button class="${T=='att'?'on':''}" onclick="T='att';draw()">الحضور</button><button class="${T=='pay'?'on':''}" onclick="T='pay';draw()">المصروفات</button><button class="${T=='rep'?'on':''}" onclick="T='rep';draw()">تقرير</button><button class="${T=='stu'?'on':''}" onclick="T='stu';draw()">الطلاب</button></div>`;
+  h+={att:attV,pay:payV,rep:repV,stu:stuV}[T](c)}
+ app.innerHTML=h}
+function attV(c){const k=c.id+'|'+DT,A=M.att[k]||{};let p=0,a=0;c.students.forEach(s=>{if(A[s.id]=='present')p++;if(A[s.id]=='absent')a++});
+ return `<div class=card><h3>حضور ${esc(c.name)}</h3><label>التاريخ</label><input type=date value="${DT}" onchange="DT=this.value||DT;draw()" style="direction:ltr"><div class=stat><span>✅ ${p}</span><span>❌ ${a}</span><span>غير مسجل ${c.students.length-p-a}</span></div>
+ <div class=bt style="margin-bottom:8px"><button class=p onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:'present'})">الكل حاضر</button><button class=a onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:'absent'})">الكل غائب</button><button onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:''})">مسح الكل</button></div>`+
+ (c.students.map(s=>`<div class=row><b>${esc(s.name)}</b><div class=bt><button class="${A[s.id]=='present'?'p':''}" onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'${s.id}',status:'present'})">حاضر</button><button class="${A[s.id]=='absent'?'a':''}" onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'${s.id}',status:'absent'})">غائب</button><button onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'${s.id}',status:''})">مسح</button></div></div>`).join('')||'<p>أضف طلاب من تبويب "الطلاب".</p>')+'</div>'}
+function payV(c){const P=M.pay[c.id+'|'+MO]||{},n=c.students.filter(s=>P[s.id]).length,fee=+c.fee||0;
+ return `<div class=card><h3>مصروفات ${esc(c.name)}</h3><label>الشهر</label><input type=month value="${MO}" onchange="MO=this.value||MO;draw()" style="direction:ltr"><p>المصروف الشهري: <span class=num>${fee}</span> جنيه <button class=sec onclick="var v=prompt('المصروف الشهري بالجنيه؟',${fee});if(v!==null)act({op:'editGroup',gid:'${c.id}',name:'${esc(c.name).replace(/'/g,'')}',fee:v})">تعديل</button></p>
+ <div class=stat><span>دفع: ${n}</span><span>لم يدفع: ${c.students.length-n}</span><span>المحصّل: ${n*fee}</span><span>المتبقي: ${(c.students.length-n)*fee}</span></div>`+
+ (c.students.map(s=>`<div class=row><div style="flex:1"><b>${esc(s.name)}</b>${P[s.id]?`<br><small>دفع بتاريخ <span class=num>${esc(P[s.id])}</span></small>`:''}</div><div class=bt><button class="${P[s.id]?'p':''}" onclick="act({op:'setPay',gid:'${c.id}',month:'${MO}',sid:'${s.id}',paid:${P[s.id]?'false':'true'},date:'${DT}'})">${P[s.id]?'✅ دفع':'لم يدفع'}</button></div></div>`).join('')||'<p>لا يوجد طلاب.</p>')+'</div>'}
+function phone(p){p=String(p||'').replace(/\D/g,'');if(p.startsWith('00'))p=p.slice(2);else if(p.startsWith('0'))p='20'+p.slice(1);return p}
+function report(c,s,mo){const dates=Object.keys(M.att).filter(k=>k.startsWith(c.id+'|'+mo)).map(k=>k.split('|')[1]).sort();let pr=0,ab=0;dates.forEach(d=>{const x=M.att[c.id+'|'+d][s.id];if(x=='present')pr++;if(x=='absent')ab++});
+ const pd=(M.pay[c.id+'|'+mo]||{})[s.id];
+ return `📊 *تقرير الطالب:* ${s.name}\n📚 *المجموعة:* ${c.name}\n📅 *تقرير شهر:* ${mo}\n------------------\n✅ *الحضور:* ${pr} من أصل ${dates.length} حصص\n❌ *الغياب:* ${ab}\n💰 *مصروف الشهر:* ${pd?'تم الدفع ✅ ('+pd+')':'لم يتم الدفع بعد ⚠️'}`}
+function repV(c){return `<div class=card><h3>تقرير شهري لولي الأمر</h3><label>الشهر</label><input type=month value="${MO}" onchange="MO=this.value||MO;draw()" style="direction:ltr"><p><small>الزر يفتح واتساب برسالة جاهزة لرقم الطالب، وتدوس إرسال هناك.</small></p>`+
+ (c.students.map(s=>`<div class=row><div style="flex:1"><b>${esc(s.name)}</b><br><small class=num>${esc(s.phone||'بدون رقم')}</small></div><div class=bt><button class=wa ${phone(s.phone).length<8?'disabled':''} onclick="sendR('${s.id}')">إرسال</button></div></div>`).join('')||'<p>لا يوجد طلاب.</p>')+'</div>'}
+function sendR(sid){const c=grp(),s=c.students.find(x=>x.id===sid);const ph=phone(s.phone);if(ph.length<8)return alert('رقم الهاتف ناقص');window.open('https://wa.me/'+ph+'?text='+encodeURIComponent(report(c,s,MO)),'_blank')}
+function stuV(c){const reg=0;return `<div class=card><h3>طلاب ${esc(c.name)}</h3><input id=sn placeholder="اسم الطالب"><input id=sp placeholder="رقم الهاتف (واتساب ولي الأمر)" style="direction:ltr" inputmode=tel><button onclick="act({op:'addStudent',gid:'${c.id}',name:$('#sn').value,phone:$('#sp').value})">+ إضافة طالب</button> <button class=sec onclick="act({op:'fromCodes',gid:'${c.id}'})">إضافة الطلاب المسجلين بالأكواد</button></div><div class=card>`+
+ (c.students.map(s=>`<div class=row><div style="flex:1"><b>${esc(s.name)}</b><br><small class=num>${esc(s.phone||'')}</small></div><div class=bt><button class=a onclick="if(confirm('حذف الطالب؟'))act({op:'delStudent',gid:'${c.id}',sid:'${s.id}'})">حذف</button></div></div>`).join('')||'<p>لا يوجد طلاب.</p>')+`</div><div class=card><button class=red onclick="if(confirm('حذف المجموعة بكل سجلاتها؟'))act({op:'delGroup',gid:'${c.id}'})">حذف المجموعة</button></div>`}
+init().catch(e=>{if(e)app.textContent='خطأ: '+e.message});
+</script></body></html>
