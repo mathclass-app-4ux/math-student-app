@@ -7,18 +7,69 @@ main{padding-bottom:84px}.hero{background:linear-gradient(135deg,#0f766e,#14b8a6
 </style></head><body>
 <header>Mr:kzafey</header><main id="app"></main>
 <script>
-const $=s=>document.querySelector(s),app=$('#app'),token=localStorage.at;let M=null,G=null,T='att',DT=new Date().toISOString().slice(0,10),MO=DT.slice(0,7);
+const $=s=>document.querySelector(s),app=$('#app');let token=localStorage.at;let M=null,G=null,T='att',DT=new Date().toISOString().slice(0,10),MO=DT.slice(0,7);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function api(b){const r=await fetch('/api/mg',{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined});if(r.status==401||r.status==403){location='/admin';throw 0}const j=await r.json();if(!r.ok)throw new Error(j.error);return j}
-async function act(b){try{M=await api(b);draw()}catch(e){alert('حصل خطأ: '+(e&&e.message))}}
+async function mgApi(b){const r=await fetch('/api/mg',{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined});if(r.status==401||r.status==403){localStorage.removeItem('at');location='/';throw 0}const j=await r.json();if(!r.ok)throw new Error(j.error);return j}
+async function act(b){try{M=await mgApi(b);draw()}catch(e){alert('حصل خطأ: '+(e&&e.message))}}
 const grp=()=>M.groups.find(g=>g.id===G);
+const api=(p,b)=>fetch('/api/'+p,{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
+let adC=[],adD={top:[],posts:[],questions:[],secure:true},adL=[];
+async function loadAdm(){adC=await api('codes');if(adC.error){localStorage.removeItem('at');location='/';return}adD=await api('content');adL=await api('logs')}
+async function reload(){await loadAdm();draw()}
+async function enter(v){V=v;if(['codes','pub','sec','qa'].includes(v)){app.innerHTML='<div class=card>جاري التحميل...</div>';await loadAdm()}draw();scrollTo(0,0)}
+const fd=t=>new Date(t).toLocaleString('en-GB');
+async function loadThumbs(){for(const s of document.querySelectorAll('.thumbs')){for(let k=0;k<+s.dataset.n;k++){try{const r=await fetch('/api/top-image?id='+s.dataset.id+'&i='+k,{headers:{Authorization:'Bearer '+token}});if(!r.ok)continue;const im=document.createElement('img');im.src=URL.createObjectURL(await r.blob());im.style='width:90px;height:90px;object-fit:cover;margin:2px;border-radius:8px';s.appendChild(im)}catch(e){}}}}
+function cp(t){const done=()=>{const m=$('#cpm');if(m){m.textContent='تم نسخ: '+t;setTimeout(()=>m.textContent='',2500)}};
+ const fb=()=>{const x=document.createElement('textarea');x.value=t;x.style.cssText='position:fixed;top:0;opacity:0';document.body.appendChild(x);x.focus();x.select();try{document.execCommand('copy')}catch(e){}x.remove();done()};
+ try{navigator.clipboard.writeText(t).then(done,fb)}catch(e){fb()}}
+async function mk(){const j=await api('codes',{count:$('#n').value,label:$('#lb').value,maxDevices:$('#md').value});await reload();const cs=Array.isArray(j)?j.map(c=>c.code):[];if(cs.length){$('#nc').innerHTML='<div style="background:#dcfce7;border-radius:10px;padding:10px;margin:8px 0"><b>تم إنشاء الكود:</b>'+cs.map(c=>`<div style="display:flex;gap:8px;align-items:center;margin:6px 0"><span class=num style="font-size:22px;font-weight:700;letter-spacing:2px;user-select:text;-webkit-user-select:text">${c}</span><button onclick="cp('${c}')">نسخ</button></div>`).join('')+(cs.length>1?`<button class=sec onclick="cp('${cs.join(' ')}')">نسخ الكل</button>`:'')+'<div id=cpm style="color:#166534;margin-top:4px"></div></div>'}}
+async function tg(c){await api('codes/toggle',{code:c});reload()}
+async function dl(p,k,v){if(confirm('متأكد؟')){await api(p,{[k]:v});reload()}}
+async function ph(c){const r=await fetch('/api/student-photo?code='+c,{headers:{Authorization:'Bearer '+token}});if(!r.ok)return;const w=window.open();w.document.write('<img style="max-width:100%" src="'+URL.createObjectURL(await r.blob())+'">')}
+const rd=f=>new Promise(r=>{const x=new FileReader;x.onload=()=>r(x.result);x.readAsDataURL(f)});
+const TO=(p,ms,what)=>Promise.race([p,new Promise((_,rj)=>setTimeout(()=>rj(new Error(what+' أخد وقت طويل')),ms))]);
+const rdE=f=>new Promise((res,rj)=>{const x=new FileReader;x.onload=()=>res(x.result);x.onerror=()=>rj(new Error('مقدرتش أقرا الملف'));x.readAsDataURL(f)});
+async function shrink(f,max=1600){
+ try{let w,h,src;
+  if(window.createImageBitmap){const bm=await TO(createImageBitmap(f),20000,'فتح الصورة');w=bm.width;h=bm.height;src=bm}
+  else{const u=URL.createObjectURL(f);src=await TO(new Promise((res,rj)=>{const i=new Image;i.onload=()=>res(i);i.onerror=()=>rj(new Error('decode'));i.src=u}),20000,'فتح الصورة');w=src.width;h=src.height}
+  const k=Math.min(1,max/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext('2d').drawImage(src,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',.85)}
+ catch(e){ if(/^image\/(png|jpeg|webp)$/.test(f.type)&&f.size<9e6){return await TO(rdE(f),20000,'قراءة الصورة')} return null}}
+const msg=(t,ok)=>{const m=$('#pm');if(m){m.style.cssText='padding:10px;border-radius:8px;margin:8px 0;background:'+(ok?'#dcfce7':'#fee2e2');m.textContent=t}};
+async function post(){const fs=[...$('#pi').files];const t=$('#pt').value,x=$('#px').value,k=$('#pk').value;
+ if(!fs.length&&!t&&!x)return msg('اختار صورة أو اكتب عنوان الأول');
+ const b=$('#pb');if(b)b.disabled=true;const done=()=>{if(b)b.disabled=false};
+ let images=[];try{for(let n=0;n<fs.length;n++){msg('جاري تجهيز الصورة '+(n+1)+' من '+fs.length+'...',1);const d=await shrink(fs[n]);if(d)images.push(d)}}catch(e){done();return msg('خطأ في تجهيز الصورة: '+e.message,0)}
+ if(fs.length&&!images.length){done();return msg('الصورة مش مدعومة (غالبا HEIC). اختار صورة JPG أو PNG',0)}
+ const body=JSON.stringify({kind:k,title:t,text:x,images});const mb=(body.length/1048576).toFixed(1);
+ for(let tr=1;tr<=2;tr++){
+  msg('جاري الرفع ('+mb+' MB)'+(tr>1?' - محاولة تانية':'')+'... السيرفر المجاني ممكن ياخد وقت لو كان نايم',1);
+  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),70000);
+  try{const r=await fetch('/api/posts',{method:'POST',headers:{Authorization:'Bearer '+token},body,signal:ac.signal});clearTimeout(tm);const j=await r.json().catch(()=>({}));
+   if(!r.ok||j.error){done();const e=j.error||('HTTP '+r.status);return msg('فشل النشر: '+(e=='admin only'||e=='login required'?'الجلسة انتهت، اخرج وادخل تاني':e=='bad_image'?'السيرفر رفض الصورة':e),0)}
+   msg('تم الرفع، جاري التحديث...',1);try{await TO(reload(),15000,'تحديث الصفحة')}catch(e){}
+   done();return msg('تم النشر ('+images.length+' صورة) ✅',1)}
+  catch(e){clearTimeout(tm);if(tr==2){done();return msg('فشل الرفع: '+(e.name=='AbortError'?'انتهى الوقت (النت ضعيف أو السيرفر نايم). جرب تاني':e.message),0)}}}}
+async function addq(){await api('questions',{subject:$('#qs').value,question:$('#qq').value,direct:$('#qd').value,explained:$('#qe').value});reload()}
+
+const back=`<div class=card><button class=sec onclick="go('set')">← الإعدادات</button></div>`;
+const vCodes=()=>back+`<div class=card><h3>إنشاء أكواد</h3><div id=nc></div><input id=n type=number value=1 min=1 max=200><input id=lb placeholder="ملاحظة (اختياري)"><input id=md type=number value=1 placeholder="عدد الأجهزة"><button onclick=mk()>إنشاء</button></div>
+ <div class=card><h3>الأكواد والطلاب (${adC.length})</h3><table>${adC.map(c=>`<tr><td class=num><b style="user-select:text;-webkit-user-select:text;font-size:17px">${c.code}</b> <button class=sec style="padding:4px 10px" onclick="cp('${c.code}')">نسخ</button></td><td>${c.student?esc(c.student.name)+'<br><span class=num>'+esc(c.student.phone)+'</span>'+(c.student.hasPhoto?` <a href="#" onclick="ph('${c.code}');return false">صورة</a>`:''):'<small>لم يسجل بعد</small>'}</td><td>${c.devices.length}/${c.maxDevices}</td><td><button class=sec onclick="tg('${c.code}')">${c.disabled?'تفعيل':'إيقاف'}</button> <button class=red onclick="dl('codes/delete','code','${c.code}')">حذف</button></td></tr>`).join('')}</table></div>
+ `;
+const vPub=()=>back+`<div class=card><h3>نشر</h3><select id=pk style="width:100%;padding:10px"><option value=top>صور الأوائل (محمية، من التطبيق فقط)</option><option value=news>إعلان عام</option></select><input id=pt placeholder="العنوان"><textarea id=px placeholder="نص"></textarea><input id=pi type=file accept="image/*" multiple><button id=pb onclick=post()>نشر لكل الطلاب</button><div id=pm></div>${adD.top.concat(adD.posts).map(p=>`<p>${p.kind=='top'?'🏆':'📢'} ${esc(p.title)} <small>(${p.count} صورة)</small> <button class=red onclick="dl('posts/delete','id','${p.id}')">حذف</button><br><span class=thumbs data-id="${p.id}" data-n="${p.count}" data-k="${p.kind}"></span></p>`).join('')}</div>
+ `;
+const vSec=()=>back+`<div class=card><h3>حماية الصور</h3><p>${adD.secure!==false?'الوضع الحالي: منع التصوير (السكرين شوت بيطلع أسود ومش بيتسجل)':'الوضع الحالي: تسجيل المحاولات (السكرين شوت مسموح وبيتسجل مين صوّر، أندرويد 14+)'}</p><button onclick="api('settings',{secure:${adD.secure===false}}).then(show)">${adD.secure!==false?'غيّر لوضع تسجيل المحاولات':'غيّر لوضع منع التصوير'}</button></div>
+ <div class=card><h3>محاولات تصوير الشاشة (${adL.length})</h3>${adL.map(l=>`<p>${fd(l.date)}: ${esc(l.name||l.code)} <span class=num>${esc(l.phone||'')}</span> حاول يصور الشاشة${l.where=='top'?' في صور الأوائل':''}</p>`).join('')||'<p>لا يوجد</p>'}</div>
+ `;
+const vQa=()=>back+``;
 const DAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 let V='home',SQ='';
 const NAV=[['home','🏠','الرئيسية'],['groups','👥','المجموعات'],['att','✅','الحضور'],['fees','💰','المصروف'],['search','🔍','بحث'],['set','⚙️','الإعدادات']];
 const ld=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const tm12=t=>t;
-async function init(){if(!token){location='/admin';return}M=await api();G=(M.groups[0]||{}).id;draw()}
-function go(v){V=v;if(v=='att'||v=='fees')DT=DT;draw();scrollTo(0,0)}
+async function init(){if(!token){location='/';return}M=await mgApi();G=(M.groups[0]||{}).id;draw()}
+function go(v){if(['codes','pub','sec','qa'].includes(v))return enter(v);V=v;if(v=='att'||v=='fees')DT=DT;draw();scrollTo(0,0)}
 function sessionsToday(){const wd=new Date().getDay(),o=[];M.groups.forEach(g=>(g.sched||[]).forEach(x=>{if(x.day==wd)o.push({g,x})}));return o.sort((a,b)=>a.x.time<b.x.time?-1:1)}
 function nextSession(){const now=new Date(),all=[];M.groups.forEach(g=>(g.sched||[]).forEach(x=>{const [hh,mm]=x.time.split(':');for(let k=0;k<8;k++){const d=new Date(now);d.setDate(d.getDate()+k);if(d.getDay()!=x.day)continue;d.setHours(+hh,+mm,0,0);if(d>now){all.push({g,x,d});break}}}));all.sort((a,b)=>a.d-b.d);return all[0]}
 function homeV(){const now=new Date(),td=ld(now);let stu=0,abs=0;M.groups.forEach(g=>{stu+=g.students.length;const A=M.att[g.id+'|'+td]||{};abs+=Object.values(A).filter(x=>x=='absent').length});
@@ -26,7 +77,7 @@ function homeV(){const now=new Date(),td=ld(now);let stu=0,abs=0;M.groups.forEac
  const dt=now.toLocaleDateString('ar-EG-u-nu-latn',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
  const tile=(i,n,l)=>`<div class=tile><div style="font-size:30px">${i}</div><b class=num style="font-size:28px">${n}</b><small>${l}</small></div>`;
  return `<div class=hero><h2>${gr} 👋</h2><p>${esc(dt)}</p><span>لوحة تحكم ذكية وشاملة</span></div><h3 style="margin:18px 4px 8px">مؤشرات اليوم</h3><div class=tiles>${tile('👥',M.groups.length,'المجموعات')}${tile('🎓',stu,'الطلاب')}${tile('📅',st.length,'حصص اليوم')}${tile('✖️',abs,'غياب اليوم')}</div>
- <div class=card><h3>⭐ الحصة القادمة</h3>${nx?`<p style="font-size:18px">${esc(nx.g.name)} - ${DAYS[nx.x.day]} الساعة <span class=num>${nx.x.time}</span></p>`:'<p><small>لا توجد حصص. أضف مواعيد من تبويب المجموعات.</small></p>'}</div>
+ <div class=tiles style="margin:12px 0"><button onclick="enter('codes')" style="padding:14px;background:#0f766e">🔑 إنشاء كود</button><button onclick="enter('pub')" style="padding:14px;background:#7c3aed">🏆 نشر</button></div><div class=card><h3>⭐ الحصة القادمة</h3>${nx?`<p style="font-size:18px">${esc(nx.g.name)} - ${DAYS[nx.x.day]} الساعة <span class=num>${nx.x.time}</span></p>`:'<p><small>لا توجد حصص. أضف مواعيد من تبويب المجموعات.</small></p>'}</div>
  <div class=card><h3>📅 جدول اليوم</h3>${st.length?st.map(o=>`<div class=sess><b>${esc(o.g.name)}</b><br><small><span class=num>${o.x.time}</span> • <span class=num>${o.x.dur}</span> دقيقة</small></div>`).join(''):'<p><small>لا توجد حصص اليوم.</small></p>'}</div>`}
 function pick(){if(!M.groups.length)return '<div class=card><p>لا توجد مجموعات. أضف مجموعة من تبويب المجموعات.</p></div>';return `<div class=card><select onchange="G=this.value;draw()">${M.groups.map(x=>`<option value="${x.id}" ${x.id===G?'selected':''}>${esc(x.name)} (${x.students.length} طالب)</option>`).join('')}</select></div>`}
 function groupsV(){let h=`<div class=card><h3>مجموعة جديدة</h3><input id=gn placeholder="اسم المجموعة"><input id=gf type=number placeholder="المصروف الشهري (جنيه)"><button onclick="act({op:'addGroup',name:$('#gn').value,fee:$('#gf').value})">+ إضافة مجموعة</button></div>`;
@@ -39,11 +90,12 @@ function grpV(c){if(!c)return groupsV();let S=c.sched||[];
 function feesV(c){return pick()+(c?`<div class=tabs><button class="${T!='rep'?'on':''}" onclick="T='pay';draw()">المصروفات</button><button class="${T=='rep'?'on':''}" onclick="T='rep';draw()">تقرير ولي الأمر</button></div>`+(T=='rep'?repV(c):payV(c)):'')}
 function searchV(){const q=SQ.trim().toLowerCase(),qd=q.replace(/\D/g,'');let res=[];if(q)M.groups.forEach(g=>g.students.forEach(s=>{if(s.name.toLowerCase().includes(q)||(qd&&String(s.phone||'').includes(qd)))res.push({g,s})}));
  return `<div class=card><input id=sq placeholder="ابحث بالاسم أو رقم الهاتف" value="${esc(SQ)}" oninput="SQ=this.value;clearTimeout(window.__t);window.__t=setTimeout(()=>{draw();const e=$('#sq');e.focus();e.setSelectionRange(e.value.length,e.value.length)},250)"></div>`+(q?(res.length?res.map(o=>`<div class=card onclick="G='${o.g.id}';T='stu';go('grp')"><b>${esc(o.s.name)}</b><br><small>${esc(o.g.name)} • <span class=num>${esc(o.s.phone||'')}</span></small></div>`).join(''):'<div class=card><p>لا توجد نتائج.</p></div>'):'<div class=card><p><small>اكتب اسم الطالب أو رقمه.</small></p></div>')}
-function setV(){return `<div class=card><h3>الإعدادات</h3><a href=/admin><button class=sec style="width:100%">← لوحة المشرف (الأكواد والنشر)</button></a></div><div class=card><p><small>البيانات هنا تجريبية على السيرفر المجاني وتتمسح عند أي تحديث.</small></p></div>`}
+function setV(){const bt=(v,i,t,s)=>`<div class=card onclick="enter('${v}')" style="display:flex;gap:12px;align-items:center"><span style="font-size:28px">${i}</span><div><b>${t}</b><br><small>${s}</small></div></div>`;
+ return `<h3 style="margin:14px 4px">الإعدادات</h3>`+bt('codes','🔑','أكواد الطلاب','إنشاء ونسخ وإيقاف الأكواد وبيانات الطلاب')+bt('pub','🏆','النشر','صور الأوائل والإعلانات لكل الطلاب')+bt('sec','🛡️','حماية الصور','منع التصوير أو تسجيل المحاولات')+bt('qa','📚','أسئلة وحلول','إضافة أسئلة وحلول يدوي')+`<div class=card><p><small>البيانات هنا تجريبية على السيرفر المجاني وتتمسح عند أي تحديث.</small></p><button class=sec onclick="localStorage.removeItem('at');location='/'">تسجيل خروج</button></div>`}
 function draw(){if(!M.groups.some(x=>x.id===G))G=(M.groups[0]||{}).id;const c=grp();
  if(V=='att'&&T!='att')T='att';if(V=='fees'&&T!='rep'&&T!='pay')T='pay';
- const body={home:homeV,groups:groupsV,grp:()=>grpV(c),att:()=>pick()+(c?attV(c):''),fees:()=>feesV(c),search:searchV,set:setV}[V]();
- app.innerHTML=body+`<nav class=bn>${NAV.map(n=>`<button class="${(V==n[0]||(V=='grp'&&n[0]=='groups'))?'on':''}" onclick="go('${n[0]}')"><span>${n[1]}</span>${n[2]}</button>`).join('')}</nav>`}
+ const body={home:homeV,groups:groupsV,grp:()=>grpV(c),att:()=>pick()+(c?attV(c):''),fees:()=>feesV(c),search:searchV,set:setV,codes:vCodes,pub:vPub,sec:vSec,qa:vQa}[V]();
+ app.innerHTML=body+`<nav class=bn>${NAV.map(n=>`<button class="${(V==n[0]||(V=='grp'&&n[0]=='groups')||(['codes','pub','sec','qa'].includes(V)&&n[0]=='set'))?'on':''}" onclick="go('${n[0]}')"><span>${n[1]}</span>${n[2]}</button>`).join('')}</nav>`;if(V=='pub')loadThumbs()}
 function attV(c){const k=c.id+'|'+DT,A=M.att[k]||{};let p=0,a=0;c.students.forEach(s=>{if(A[s.id]=='present')p++;if(A[s.id]=='absent')a++});
  return `<div class=card><h3>حضور ${esc(c.name)}</h3><label>التاريخ</label><input type=date value="${DT}" onchange="DT=this.value||DT;draw()" style="direction:ltr"><div class=stat><span>✅ ${p}</span><span>❌ ${a}</span><span>غير مسجل ${c.students.length-p-a}</span></div>
  <div class=bt style="margin-bottom:8px"><button class=p onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:'present'})">الكل حاضر</button><button class=a onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:'absent'})">الكل غائب</button><button onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:''})">مسح الكل</button></div>`+
