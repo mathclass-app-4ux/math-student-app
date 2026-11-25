@@ -9,7 +9,12 @@ const DATA=path.join(__dirname,'data'),DB=path.join(DATA,'db.json'),UP=path.join
 fs.mkdirSync(UP,{recursive:true});
 let db={codes:[],posts:[],questions:[],sessions:{},logs:[],solves:{},settings:{secure:true}};
 if(fs.existsSync(DB)) db=Object.assign(db,JSON.parse(fs.readFileSync(DB)));
-db.mg=db.mg||{groups:[],att:{},pay:{}};
+db.ws=db.ws||{};db.wsOf=db.wsOf||{};
+if(db.mg){const ow=(ENVADM[1]?ENVADM[1][0]:ENVADM[0][0]).toLowerCase();if(!db.ws[ow])db.ws[ow]=db.mg;delete db.mg}
+const uOf=se=>String((se&&se.user)||ENVADM[0][0]).toLowerCase();
+const wsId=u=>db.wsOf[u]||u;
+const WS=u=>{const k=wsId(u);return db.ws[k]||(db.ws[k]={groups:[],att:{},pay:{}})};
+const allGroups=()=>Object.values(db.ws).flatMap(w=>w.groups);
 const SIGN={};
 const save=()=>fs.writeFileSync(DB,JSON.stringify(db));
 const LINKS={whatsapp:'https://wa.me/201142104969',facebook:[
@@ -81,8 +86,8 @@ http.createServer(async(q,r)=>{
   if(p==='/api/like'&&q.method==='POST'&&isStudent){const b=await body(q);const po=db.posts.find(x=>x.id===b.id&&x.kind==='top');if(!po)return json(r,404,{error:'none'});po.likes=po.likes||[];const k=po.likes.indexOf(me.code);if(k>=0)po.likes.splice(k,1);else po.likes.push(me.code);save();return json(r,200,{liked:k<0,likes:po.likes.length,likers:po.likes.map(c=>{const d=db.codes.find(y=>y.code===c);return d&&d.student?d.student.name:null}).filter(Boolean)});}
   if(p==='/api/content'&&q.method==='GET'){
    if(isStudent&&!me.student) return json(r,403,{error:'register first'});
-   const strip=x=>({id:x.id,title:x.title,text:x.text,date:x.date,kind:x.kind,count:x.images.length,likes:(x.likes||[]).length,liked:!!(me&&(x.likes||[]).includes(me.code)),likers:(x.likes||[]).map(c=>{const d=db.codes.find(y=>y.code===c);return d&&d.student?d.student.name:null}).filter(Boolean)});
-   return json(r,200,{adminName:db.mg.adminName||'',links:LINKS,posts:db.posts.filter(x=>x.kind!=='top').map(x=>({...strip(x),images:x.images})),top:db.posts.filter(x=>x.kind==='top').map(strip),questions:db.questions,appOnly:true,isApp:isApp(q),secure:db.settings.secure!==false,open:!!db.settings.open,closed:!!db.settings.closed});}
+   const strip=x=>({adminName:x.by||'',id:x.id,title:x.title,text:x.text,date:x.date,kind:x.kind,count:x.images.length,likes:(x.likes||[]).length,liked:!!(me&&(x.likes||[]).includes(me.code)),likers:(x.likes||[]).map(c=>{const d=db.codes.find(y=>y.code===c);return d&&d.student?d.student.name:null}).filter(Boolean)});
+   return json(r,200,{adminName:'',links:LINKS,posts:db.posts.filter(x=>x.kind!=='top').map(x=>({...strip(x),images:x.images})),top:db.posts.filter(x=>x.kind==='top').map(strip),questions:db.questions,appOnly:true,isApp:isApp(q),secure:db.settings.secure!==false,open:!!db.settings.open,closed:!!db.settings.closed});}
   if(p==='/api/top-image'&&q.method==='GET'){
    const post=db.posts.find(x=>x.id===u.searchParams.get('id')),i=+u.searchParams.get('i')||0;
    if(!post||!post.images[i]) return json(r,404,{error:'not found'});
@@ -99,7 +104,7 @@ http.createServer(async(q,r)=>{
    return json(r,out.error==='empty'?400:out.error?502:200,out);}
   if(p==='/api/security-event'&&isStudent&&q.method==='POST'){
    const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80)});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
-  if(p==='/api/my-grades'&&isStudent){let st=null,gn='';for(const g of db.mg.groups){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;break}}if(!st)return json(r,200,{linked:false,grades:[]});return json(r,200,{linked:true,name:st.name,group:gn,grades:(st.grades||[]).slice().sort((a,b)=>b.date-a.date)});}
+  if(p==='/api/my-grades'&&isStudent){let st=null,gn='';for(const g of allGroups()){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;break}}if(!st)return json(r,200,{linked:false,grades:[]});return json(r,200,{linked:true,name:st.name,group:gn,grades:(st.grades||[]).slice().sort((a,b)=>b.date-a.date)});}
   if(!isAdmin) return json(r,403,{error:'admin only'});
   if(p==='/api/admins'&&q.method==='GET') return json(r,200,{me:sess.user||'',list:ENVADM.map(x=>({user:x[0],src:'env'})).concat((db.admins||[]).map(a=>({user:a.user,email:a.email||'',by:a.by||'',src:'app'})))});
   if(p==='/api/admins/add'&&q.method==='POST'){const b=await body(q),u=String(b.username||'').trim().toLowerCase(),pw=String(b.password||''),em=String(b.email||'').trim().slice(0,80);
@@ -107,7 +112,15 @@ http.createServer(async(q,r)=>{
    if(pw.length<8) return json(r,400,{error:'كلمة السر 8 حروف على الأقل'});
    if(ENVADM.some(x=>x[0].toLowerCase()===u)||(db.admins||[]).some(a=>a.user===u)) return json(r,400,{error:'اسم المستخدم موجود'});
    const salt=crypto.randomBytes(16).toString('hex');db.admins=db.admins||[];db.admins.push({user:u,email:em,salt,hash:hashPw(pw,salt),by:sess.user||'',date:Date.now()});save();return json(r,200,{ok:1});}
-  if(p==='/api/admins/delete'&&q.method==='POST'){const b=await body(q),u=String(b.username||'').toLowerCase();if(u===String(sess.user||'').toLowerCase())return json(r,400,{error:'مينفعش تحذف حسابك'});db.admins=(db.admins||[]).filter(a=>a.user!==u);for(const k of Object.keys(db.sessions))if(db.sessions[k].role==='admin'&&db.sessions[k].user===u)delete db.sessions[k];save();return json(r,200,{ok:1});}
+  if(p==='/api/admins/share'&&q.method==='GET'){const me=uOf(sess),w=wsId(me),all=ENVADM.map(x=>x[0].toLowerCase()).concat((db.admins||[]).map(a=>a.user));return json(r,200,{me,owner:w===me,linkedTo:w===me?'':w,members:all.filter(u=>u!==me&&db.wsOf[u]===me),others:all.filter(u=>u!==me)});}
+  if(p==='/api/admins/link'&&q.method==='POST'){const b=await body(q),me=uOf(sess),u=String(b.user||'').toLowerCase(),all=ENVADM.map(x=>x[0].toLowerCase()).concat((db.admins||[]).map(a=>a.user));
+   if(wsId(me)!==me) return json(r,400,{error:'حسابك نفسه مربوط، فك الربط الأول'});
+   if(!all.includes(u)||u===me) return json(r,400,{error:'مشرف غير صحيح'});
+   if(db.wsOf[u]) return json(r,400,{error:'المشرف ده مربوط بحساب تاني'});
+   if(Object.values(db.wsOf).includes(u)) return json(r,400,{error:'فيه مشرفين مربوطين على بيانات المشرف ده'});
+   db.wsOf[u]=me;save();return json(r,200,{ok:1});}
+  if(p==='/api/admins/unlink'&&q.method==='POST'){const b=await body(q),me=uOf(sess),u=String(b.user||me).toLowerCase();if(u!==me&&db.wsOf[u]!==me)return json(r,400,{error:'مش مربوط بحسابك'});delete db.wsOf[u];save();return json(r,200,{ok:1});}
+  if(p==='/api/admins/delete'&&q.method==='POST'){const b=await body(q),u=String(b.username||'').toLowerCase();if(u===String(sess.user||'').toLowerCase())return json(r,400,{error:'مينفعش تحذف حسابك'});db.admins=(db.admins||[]).filter(a=>a.user!==u);for(const k of Object.keys(db.sessions))if(db.sessions[k].role==='admin'&&db.sessions[k].user===u)delete db.sessions[k];delete db.wsOf[u];for(const k of Object.keys(db.wsOf))if(db.wsOf[k]===u)delete db.wsOf[k];save();return json(r,200,{ok:1});}
   if(p==='/api/codes'&&q.method==='GET') return json(r,200,db.codes.map(c=>({...c,student:c.student?{name:c.student.name,phone:c.student.phone,date:c.student.date,hasPhoto:!!c.student.photo}:null})));
   if(p==='/api/codes'&&q.method==='POST'){const b=await body(q);const n=Math.min(+b.count||1,200),out=[];
    for(let i=0;i<n;i++){const c={code:newCode(),label:b.label||'',maxDevices:+b.maxDevices||1,devices:[],disabled:false,created:Date.now()};db.codes.push(c);out.push(c)}
@@ -118,18 +131,18 @@ http.createServer(async(q,r)=>{
   if(p==='/api/settings'&&q.method==='POST'){const b=await body(q);for(const k of ['secure','open','closed'])if(k in b)db.settings[k]=!!b[k];save();return json(r,200,{ok:1});}
   if(p==='/api/codes/endsession'){const b=await body(q);for(const k of Object.keys(db.sessions))if(db.sessions[k].code===b.code)delete db.sessions[k];save();return json(r,200,{ok:1});}
   if(p==='/api/logs') return json(r,200,db.logs);
-  if(p==='/api/posts'&&q.method==='POST'){const b=await body(q);const post={id:id(),kind:b.kind==='top'?'top':'news',title:b.title||'',text:b.text||'',images:[],date:Date.now()};
+  if(p==='/api/posts'&&q.method==='POST'){const b=await body(q);const post={id:id(),kind:b.kind==='top'?'top':'news',title:b.title||'',text:b.text||'',images:[],by:WS(uOf(sess)).adminName||'',date:Date.now()};
    for(const im of b.images||[]){const f=saveImg(im);if(f)post.images.push(f.startsWith('/')?f:(post.kind==='top'?f:'/uploads/'+f))}
    if((b.images||[]).length&&!post.images.length) return json(r,400,{error:'bad_image'});
    db.posts.unshift(post);save();return json(r,200,{id:post.id});}
   if(p==='/api/posts/delete'){const b=await body(q);db.posts=db.posts.filter(x=>x.id!==b.id);save();return json(r,200,{ok:1});}
   if(p==='/api/questions'&&q.method==='POST'){const b=await body(q);const x={id:id(),subject:b.subject||'',question:b.question||'',direct:b.direct||'',explained:b.explained||'',date:Date.now()};db.questions.unshift(x);save();return json(r,200,x);}
   if(p==='/api/questions/delete'){const b=await body(q);db.questions=db.questions.filter(x=>x.id!==b.id);save();return json(r,200,{ok:1});}
-  if(p==='/api/mg-photo'){const sid=u.searchParams.get('id');let st=null;for(const g of db.mg.groups){st=g.students.find(x=>x.id===sid);if(st)break}if(!st||!st.photo)return json(r,404,{error:'none'});const f=path.join(UP,path.basename(st.photo));r.writeHead(200,{'Content-Type':types[path.extname(f)]||'image/jpeg','Cache-Control':'private, max-age=3600'});return fs.createReadStream(f).pipe(r);}
-  if(p==='/api/mg'&&q.method==='GET') return json(r,200,db.mg);
-  if(p==='/api/mg'&&q.method==='POST'){const b=await body(q),M=db.mg,S=x=>String(x||'').slice(0,80);const g=M.groups.find(x=>x.id===b.gid);
+  if(p==='/api/mg-photo'){const sid=u.searchParams.get('id');let st=null;for(const g of WS(uOf(sess)).groups){st=g.students.find(x=>x.id===sid);if(st)break}if(!st||!st.photo)return json(r,404,{error:'none'});const f=path.join(UP,path.basename(st.photo));r.writeHead(200,{'Content-Type':types[path.extname(f)]||'image/jpeg','Cache-Control':'private, max-age=3600'});return fs.createReadStream(f).pipe(r);}
+  if(p==='/api/mg'&&q.method==='GET') return json(r,200,WS(uOf(sess)));
+  if(p==='/api/mg'&&q.method==='POST'){const b=await body(q),M=WS(uOf(sess)),S=x=>String(x||'').slice(0,80);const g=M.groups.find(x=>x.id===b.gid);
    const D=/^\d{4}-\d{2}-\d{2}$/,MO=/^\d{4}-\d{2}$/;
-   if(b.op==='setName'){db.mg.adminName=String(b.name||'').trim().slice(0,40);}
+   if(b.op==='setName'){M.adminName=String(b.name||'').trim().slice(0,40);}
    else if(b.op==='addGroup'){if(!S(b.name))return json(r,400,{error:'name'});M.groups.push({id:id(),name:S(b.name),fee:Math.max(0,+b.fee||0),students:[]});}
    else if(!g) return json(r,404,{error:'group'});
    else if(b.op==='editGroup'){if(S(b.name))g.name=S(b.name);g.fee=Math.max(0,+b.fee||0);}
@@ -139,12 +152,12 @@ http.createServer(async(q,r)=>{
    else if(b.op==='delStudent'){g.students=g.students.filter(x=>x.id!==b.sid);}
    else if(b.op==='editStudent'){const st=g.students.find(x=>x.id===b.sid);if(!st||!S(b.name))return json(r,400,{error:'student'});st.name=S(b.name);st.phone=String(b.phone||'').replace(/[^0-9]/g,'').slice(0,20);if(b.photo){const f=saveImg(b.photo);if(f)st.photo=f}else if(b.rmPhoto)st.photo=null;}
    else if(b.op==='reorder'){const o=Array.isArray(b.order)?b.order:[];const mp=new Map(g.students.map(x=>[x.id,x]));const ns=[];for(const i of o)if(mp.has(i)){ns.push(mp.get(i));mp.delete(i)}for(const x of mp.values())ns.push(x);g.students=ns;}
-   else if(b.op==='linkCode'){const st=g.students.find(x=>x.id===b.sid);const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());if(!st)return json(r,400,{error:'student'});if(!c)return json(r,400,{error:'الكود غير موجود'});if(db.mg.groups.some(x=>x.students.some(y=>y.code===c.code&&y!==st)))return json(r,400,{error:'الكود مربوط بطالب تاني'});st.code=c.code;}
+   else if(b.op==='linkCode'){const st=g.students.find(x=>x.id===b.sid);const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());if(!st)return json(r,400,{error:'student'});if(!c)return json(r,400,{error:'الكود غير موجود'});if(allGroups().some(x=>x.students.some(y=>y.code===c.code&&y!==st)))return json(r,400,{error:'الكود مربوط بطالب تاني'});st.code=c.code;}
    else if(b.op==='newCode'){const st=g.students.find(x=>x.id===b.sid);if(!st)return json(r,400,{error:'student'});if(st.code)return json(r,400,{error:'مربوط بكود بالفعل'});const c={code:newCode(),label:st.name,maxDevices:1,devices:[],disabled:false,created:Date.now(),student:{name:st.name,phone:st.phone,photo:st.photo||null,date:Date.now()}};db.codes.push(c);st.code=c.code;}
    else if(b.op==='unlink'){const st=g.students.find(x=>x.id===b.sid);if(st)delete st.code;}
    else if(b.op==='addGrade'){const st=g.students.find(x=>x.id===b.sid);const t=S(b.title);if(!st||!t)return json(r,400,{error:'title'});const sc=String(b.score||'').slice(0,10),mx=String(b.max||'').slice(0,10);st.grades=st.grades||[];st.grades.push({id:id(),title:t,score:sc,max:mx,date:Date.now()});}
    else if(b.op==='delGrade'){const st=g.students.find(x=>x.id===b.sid);if(st)st.grades=(st.grades||[]).filter(x=>x.id!==b.gr);}
-   else if(b.op==='fromCodes'){const have=new Set(M.groups.flatMap(x=>x.students.map(y=>y.code).filter(Boolean)));for(const c of db.codes)if(c.student&&!have.has(c.code))g.students.push({id:id(),name:c.student.name,phone:c.student.phone,code:c.code,photo:c.student.photo||null});}
+   else if(b.op==='fromCodes'){const have=new Set(allGroups().flatMap(x=>x.students.map(y=>y.code).filter(Boolean)));for(const c of db.codes)if(c.student&&!have.has(c.code))g.students.push({id:id(),name:c.student.name,phone:c.student.phone,code:c.code,photo:c.student.photo||null});}
    else if(b.op==='addSched'){const dy=+b.day,tm=String(b.time||''),du=Math.min(600,Math.max(10,+b.dur||60));if(!(dy>=0&&dy<=6)||!/^\d{2}:\d{2}$/.test(tm))return json(r,400,{error:'sched'});g.sched=g.sched||[];g.sched.push({id:id(),day:dy,time:tm,dur:du});}
    else if(b.op==='delSched'){g.sched=(g.sched||[]).filter(x=>x.id!==b.sid);}
    else if(b.op==='setAtt'){if(!D.test(b.date||''))return json(r,400,{error:'date'});const k=g.id+'|'+b.date;M.att[k]=M.att[k]||{};const ids=b.sid==='*'?g.students.map(x=>x.id):[b.sid];for(const i of ids){if(b.status==='present'||b.status==='absent')M.att[k][i]=b.status;else delete M.att[k][i];}if(!Object.keys(M.att[k]).length)delete M.att[k];}
