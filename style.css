@@ -41,3 +41,5 @@ canvas{max-width:100%;border-radius:8px;margin:6px 0;display:block}.warn{backgro
 .lhd{display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:1px solid #e5e7eb;margin-bottom:6px}
 .lx{background:#e5e7eb;color:#111;width:32px;height:32px;padding:0;border-radius:50%;margin:0}
 .lrow{display:flex;align-items:center;gap:10px;padding:9px 2px;font-size:16px}.lav{width:36px;height:36px;border-radius:50%;background:linear-gradient(45deg,#f59e0b,#ec4899);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+
+.an{background:linear-gradient(135deg,#7c3aed,#ec4899);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:16px}
