@@ -4,7 +4,7 @@ const GEMINI_API_KEY=process.env.GEMINI_API_KEY||'', GEMINI_MODEL=process.env.GE
 const SOLVE_PER_DAY=+process.env.SOLVE_PER_DAY||20;
 const DATA=path.join(__dirname,'data'),DB=path.join(DATA,'db.json'),UP=path.join(DATA,'uploads');
 fs.mkdirSync(UP,{recursive:true});
-let db={codes:[],posts:[],questions:[],sessions:{},logs:[],solves:{}};
+let db={codes:[],posts:[],questions:[],sessions:{},logs:[],solves:{},settings:{secure:true}};
 if(fs.existsSync(DB)) db=Object.assign(db,JSON.parse(fs.readFileSync(DB)));
 const save=()=>fs.writeFileSync(DB,JSON.stringify(db));
 const LINKS={whatsapp:'https://wa.me/201142104969',facebook:[
@@ -26,7 +26,9 @@ async function solve(text,image){
  const m=/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(image||'');
  if(m) parts.push({inline_data:{mime_type:m[1],data:m[2]}});
  if(!text&&!m) return {error:'empty'};
- const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODEL+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_API_KEY},body:JSON.stringify({contents:[{parts}]})});
+ const call=gc=>fetch('https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODEL+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_API_KEY},body:JSON.stringify({contents:[{parts}],generationConfig:gc}),signal:AbortSignal.timeout(55000)});
+ let r=await call({thinkingConfig:{thinkingLevel:'low'},maxOutputTokens:2500});
+ if(r.status===400) r=await call({maxOutputTokens:2500});
  const j=await r.json().catch(()=>({}));
  if(!r.ok) return {error:'ai_failed',status:r.status,detail:(j.error&&j.error.message||'').slice(0,200)};
  const t=((j.candidates||[])[0]?.content?.parts||[]).map(p=>p.text||'').join('');
@@ -56,7 +58,7 @@ http.createServer(async(q,r)=>{
   if(p==='/api/content'&&q.method==='GET'){
    if(isStudent&&!me.student) return json(r,403,{error:'register first'});
    const strip=x=>({id:x.id,title:x.title,text:x.text,date:x.date,kind:x.kind,count:x.images.length});
-   return json(r,200,{links:LINKS,posts:db.posts.filter(x=>x.kind!=='top').map(x=>({...strip(x),images:x.images})),top:db.posts.filter(x=>x.kind==='top').map(strip),questions:db.questions,appOnly:true,isApp:isApp(q)});}
+   return json(r,200,{links:LINKS,posts:db.posts.filter(x=>x.kind!=='top').map(x=>({...strip(x),images:x.images})),top:db.posts.filter(x=>x.kind==='top').map(strip),questions:db.questions,appOnly:true,isApp:isApp(q),secure:db.settings.secure!==false});}
   if(p==='/api/top-image'&&q.method==='GET'){
    const post=db.posts.find(x=>x.id===u.searchParams.get('id')),i=+u.searchParams.get('i')||0;
    if(!post||!post.images[i]) return json(r,404,{error:'not found'});
@@ -81,6 +83,7 @@ http.createServer(async(q,r)=>{
   if(p==='/api/codes/toggle'){const b=await body(q);const c=db.codes.find(x=>x.code===b.code);if(c){c.disabled=!c.disabled;save()}return json(r,200,{ok:1});}
   if(p==='/api/codes/delete'){const b=await body(q);db.codes=db.codes.filter(x=>x.code!==b.code);save();return json(r,200,{ok:1});}
   if(p==='/api/student-photo'){const c=db.codes.find(x=>x.code===u.searchParams.get('code'));if(!c||!c.student||!c.student.photo)return json(r,404,{error:'none'});const f=path.join(UP,path.basename(c.student.photo));r.writeHead(200,{'Content-Type':types[path.extname(f)]||'image/jpeg'});return fs.createReadStream(f).pipe(r);}
+  if(p==='/api/settings'&&q.method==='POST'){const b=await body(q);db.settings.secure=!!b.secure;save();return json(r,200,{ok:1});}
   if(p==='/api/logs') return json(r,200,db.logs);
   if(p==='/api/posts'&&q.method==='POST'){const b=await body(q);const post={id:id(),kind:b.kind==='top'?'top':'news',title:b.title||'',text:b.text||'',images:[],date:Date.now()};
    for(const im of b.images||[]){const f=saveImg(im);if(f)post.images.push(f.startsWith('/')?f:(post.kind==='top'?f:'/uploads/'+f))}
