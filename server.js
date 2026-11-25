@@ -139,9 +139,9 @@ const LM=(()=>{
 })();
 const localSolve=t=>{try{return LM.solve(t)}catch(e){return null}};
 async function solveC(text,image,opt){opt=opt||{};
- if(!opt.detect&&!image&&text){const L=localSolve(text);if(L){const t=st();t.loc=(t.loc||0)+1;return {direct:L.direct,explained:L.explained,cached:true,local:true}}}
+ if(!opt.detect&&!opt.forceGroq&&!image&&text){const L=localSolve(text);if(L){const t=st();t.loc=(t.loc||0)+1;return {direct:L.direct,explained:L.explained,cached:true,local:true}}}
  if(opt.detect){const o=await solve(text,image,opt);if(o.error){st().fail++;if(o.error==='ai_busy')st().quota++}else st().det++;return o}
- const k=cacheKey(text,image,opt.pick);
+ const k=opt.forceGroq?null:cacheKey(text,image,opt.pick);
  if(k&&db.cache&&db.cache[k]){const c=db.cache[k];c.h=(c.h||0)+1;st().hits++;return {direct:c.d,explained:c.e,cached:true}}
  const o=await solve(text,image,opt);
  if(o.error){if(o.error!=='empty'){st().fail++;if(o.error==='ai_busy')st().quota++}}
@@ -170,7 +170,7 @@ async function solve(text,image,opt){
  if(opt.pick&&opt.pick.n) parts.push({text:'The image has several problems. Solve ONLY problem number '+(+opt.pick.n)+(opt.pick.text?' (it starts with: '+String(opt.pick.text).slice(0,300)+')':'')+'. Ignore every other problem in the image.'});
  if(text) parts.push({text:'Problem text: '+text});
  parts.push(...img);
- let {r,j}=await run(parts,8000,'low');
+ let {r,j}=opt.forceGroq?{r:{ok:false,status:429},j:{}}:await run(parts,8000,'low');
  if(!r.ok&&!m&&process.env.GROQ_API_KEY&&[429,503,500,0].includes(r.status)){try{const gr=await fetch((process.env.GROQ_BASE||'https://api.groq.com')+'/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.GROQ_API_KEY},body:JSON.stringify({model:process.env.GROQ_MODEL||'openai/gpt-oss-120b',messages:[{role:'user',content:parts.map(x=>x.text).filter(Boolean).join('\n\n')}],max_tokens:6000,reasoning_effort:'low'}),signal:AbortSignal.timeout(60000)});const gj=await gr.json().catch(()=>({}));const gt=gj.choices&&gj.choices[0]&&gj.choices[0].message&&gj.choices[0].message.content;if(gr.ok&&gt){const g2=/DIRECT:\s*([\s\S]*?)\s*EXPLAINED:\s*([\s\S]*)/i.exec(gt);st().groq=(st().groq||0)+1;return g2?{direct:g2[1].trim(),explained:g2[2].trim()}:{direct:'',explained:gt.trim()}}}catch(e){}}
  let fin=(j.candidates||[])[0]?.finishReason;
  if(r.ok&&fin==='MAX_TOKENS'){const x=await run(parts,16000,'low');if(x.r.ok){r=x.r;j=x.j;fin=(j.candidates||[])[0]?.finishReason}}
@@ -204,7 +204,7 @@ http.createServer(async(q,r)=>{
    if(!hit2){
    if(SL.all+w>SOLVER_DAY_ALL||capHit()) return cj(429,{error:'busy'});
    if((SL.dev[dev]||0)+w>SOLVER_DAY_DEV*3||(SL.ip[ip]||0)+w>SOLVER_DAY_IP*3) return cj(429,{error:'daily_limit'});}
-   const out=await solveC(stx,b.image,det?{detect:true}:{pick:b.pick});
+   const out=await solveC(stx,b.image,det?{detect:true}:{pick:b.pick,forceGroq:b.provider==='groq'&&!b.image});
    if(!out.error&&!out.cached){SL.all+=w;SL.dev[dev]=(SL.dev[dev]||0)+w;SL.ip[ip]=(SL.ip[ip]||0)+w}
    save();
    return cj(out.error==='empty'?400:out.error?502:200,out);}
