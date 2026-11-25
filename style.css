@@ -45,3 +45,5 @@ canvas{max-width:100%;border-radius:8px;margin:6px 0;display:block}.warn{backgro
 .an{background:linear-gradient(135deg,#7c3aed,#ec4899);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:16px}
 
 .links a.big{display:block;margin:10px 0;padding:18px;border-radius:14px;color:#fff;text-align:center;font-size:18px;font-weight:700}
+
+.prob{display:block;width:100%;text-align:right;margin:8px 0;padding:12px;font-size:16px;white-space:normal}
