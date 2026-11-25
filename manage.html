@@ -16,6 +16,10 @@ async function act(b){try{M=await mgApi(b);draw()}catch(e){alert(e&&e.message&&e
 const grp=()=>M.groups.find(g=>g.id===G);
 const api=(p,b)=>fetch('/api/'+p,{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
 let adC=[],adD={top:[],posts:[],questions:[],secure:true},adL=[];
+let _k=null,_arm=0,_rs=false,_first=null,_apply=null;
+function navToast(m){let t=document.getElementById('navt');if(!t){t=document.createElement('div');t.id='navt';t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1b2430;color:#fff;padding:10px 18px;border-radius:20px;z-index:99;font-size:14px';document.body.appendChild(t)}t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2200)}
+function navPush(key,st){if(_rs){_rs=false;_k=key;return}if(_k===null){history.replaceState({root:1},'');history.pushState(st,'');_k=key;_first=st;return}if(key!==_k){history.pushState(st,'');_k=key}}
+window.addEventListener('popstate',e=>{const s=e.state;if(!s||s.root){if(_arm&&Date.now()-_arm<2500){_arm=0;history.back();return}_arm=Date.now();navToast('اضغط رجوع مرة تانية للخروج');if(_first){history.pushState(_first,'');_rs=true;_apply&&_apply(_first)}return}_arm=0;_rs=true;_apply&&_apply(s)});
 let AD={me:'',list:[]};
 async function loadAdm(){AD=await api('admins');adC=await api('codes');if(adC.error){localStorage.removeItem('at');location='/';return}adD=await api('content');adL=await api('logs')}
 async function reload(){await loadAdm();draw()}
@@ -125,7 +129,8 @@ function attMonth(c){if(!c)return '';const dates=Object.keys(M.att).filter(k=>k.
  let t=`<table style="min-width:100%;text-align:center;background:#fff"><thead><tr><th>الطالب</th>${dates.map(d=>`<th class=num>${d.slice(8)}/${d.slice(5,7)}</th>`).join('')}<th>حضور</th></tr></thead><tbody>`;
  c.students.forEach(s=>{let p=0;t+=`<tr><td style="text-align:right"><b>${esc(s.name)}</b></td>`+dates.map(d=>{const x=M.att[c.id+'|'+d][s.id];if(x=='present')p++;return `<td>${x=='present'?'✅':x=='absent'?'❌':'-'}</td>`}).join('')+`<td class=num>${p}/${dates.length}</td></tr>`});
  return `<div class=card><button class=sec onclick="go('att')">← المجموعات</button><h3>حضور الشهر - ${esc(c.name)}</h3><label>الشهر</label><input type=month value="${MO}" onchange="MO=this.value||MO;draw()" style="direction:ltr">${dates.length?`<div style="overflow-x:auto">${t}</tbody></table></div>`:'<p>لا توجد سجلات هذا الشهر.</p>'}</div>`}
-function draw(){if(!M.groups.some(x=>x.id===G))G=(M.groups[0]||{}).id;const c=grp();
+_apply=s=>{V=s.V;G=s.G;SAG=SAS=EG=false;ES=null;if(['codes','pub','sec','qa','regs','adm'].includes(V)){enter(V)}else draw();scrollTo(0,0)};
+function draw(){if(!M.groups.some(x=>x.id===G))G=(M.groups[0]||{}).id;const c=grp();navPush(V+'|'+G,{V,G});
  if(V=='att'&&T!='att')T='att';if(V=='feed'&&T!='rep'&&T!='pay')T='pay';
  const body={home:homeV,groups:groupsV,grp:()=>grpV(c),att:attList,attd:()=>c?`<div class=card><button class=sec onclick="go('att')">← المجموعات</button></div>`+attV(c):attList(),attm:()=>attMonth(c),fees:feesList,feed:()=>feesV(c),feeset:feeSet,name:nameSet,stg:()=>stG(c),sched:schedList,sched1:()=>sched1(c),search:searchV,set:setV,codes:vCodes,pub:vPub,sec:vSec,qa:vQa,regs:vRegs,adm:vAdm}[V]();
  app.innerHTML=body+`<nav class=bn>${NAV.map(n=>`<button class="${(V==n[0]||(['attd','attm'].includes(V)&&n[0]=='att')||(V=='feed'&&n[0]=='fees')||(['feeset','sched','sched1','name'].includes(V)&&n[0]=='set')||(V=='stg'&&n[0]=='groups')||(V=='grp'&&n[0]=='groups')||(['codes','pub','sec','qa','regs','adm'].includes(V)&&n[0]=='set'))?'on':''}" onclick="go('${n[0]}')"><span>${n[1]}</span>${n[2]}</button>`).join('')}</nav>`;if(V=='pub')loadThumbs();loadPh()}
