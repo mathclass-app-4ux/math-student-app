@@ -264,7 +264,7 @@ http.createServer(async(q,r)=>{
    save();
    return json(r,out.error==='empty'?400:out.error?502:200,out);}
   if(p==='/api/security-event'&&isStudent&&q.method==='POST'){
-   const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80)});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
+   const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80),posts:Array.isArray(b.posts)?b.posts.slice(0,4).map(x=>({id:String((x&&x.id)||'').slice(0,40),title:String((x&&x.title)||'').slice(0,40),text:String((x&&x.text)||'').slice(0,30),pct:+(x&&x.pct)||0,at:+(x&&x.at)||0})):[]});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
   if(p==='/api/my-grades'&&isStudent){let st=null,gn='';for(const g of allGroups()){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;break}}if(!st)return json(r,200,{linked:false,grades:[]});return json(r,200,{linked:true,name:st.name,group:gn,grades:(st.grades||[]).slice().sort((a,b)=>b.date-a.date)});}
   if(!isAdmin) return json(r,403,{error:'admin only'});
   if(p==='/api/admins'&&q.method==='GET') return json(r,200,{me:sess.user||'',list:ENVADM.map(x=>({user:x[0],src:'env'})).concat((db.admins||[]).map(a=>({user:a.user,email:a.email||'',by:a.by||'',src:'app'})))});
