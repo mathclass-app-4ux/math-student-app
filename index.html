@@ -21,7 +21,7 @@ async function start(){try{const r=await fetch('/api/me',{headers:H()});if(r.sta
  ME.registered?load():reg()}
 function reg(m){app.innerHTML=`<div class=card><h3>بياناتك</h3>${localStorage.mycode?'<div class=warn>كودك الخاص: <b class=num style="user-select:text;font-size:20px">'+localStorage.mycode+'</b><br>احتفظ بيه، تدخل بيه من أي موبايل بعد ما تخرج من الأول.</div>':''}<input id=n placeholder="الاسم"><input id=ph type=tel placeholder="رقم الموبايل" style="direction:ltr"><label>صورتك (اختياري)</label><input id=pi type=file accept="image/*"><button onclick=doReg()>حفظ</button><p style=color:#dc2626>${m||''}</p></div>`}
 async function doReg(){const f=$('#pi').files[0];const photo=f?await small(f,600):null;const r=await fetch('/api/register',{method:'POST',headers:H(),body:JSON.stringify({name:$('#n').value,phone:$('#ph').value,photo})});if(!r.ok)return reg('اكتب الاسم ورقم موبايل صحيح');start()}
-async function load(){let off=false;try{const r=await fetch('/api/content',{headers:H()});if(r.status==423)return closedScr();if(!r.ok){localStorage.removeItem('t');return chooser()}D=await r.json();localStorage.cache=JSON.stringify(D);try{if(window.Android&&Android.setSecure)Android.setSecure(D.secure!==false)}catch(e){}}catch(e){D=JSON.parse(localStorage.cache||'null');off=true;if(!D)return chooser()}
+async function load(){let off=false;try{const r=await fetch('/api/content',{headers:H()});if(r.status==423)return closedScr();if(!r.ok){localStorage.removeItem('t');return chooser()}D=await r.json();localStorage.cache=JSON.stringify(D);try{if(window.Android&&Android.setSecure)Android.setSecure(D.secure!==false)}catch(e){}wm(D.secure===false)}catch(e){D=JSON.parse(localStorage.cache||'null');off=true;if(!D)return chooser()}
  render(off)}
 const TABS=[['solve','حل مسألة'],['t','وسائل التواصل'],['g','درجاتي'],['top','الأوائل'],['news','إعلانات'],['q','أسئلة وحلول']];
 let _k=null,_arm=0,_rs=false,_first=null,_apply=null;
@@ -50,7 +50,7 @@ async function like(id){try{const r=await fetch('/api/like',{method:'POST',heade
 async function topImg(id,i){try{const r=await fetch('/api/top-image?id='+id+'&i='+i,{headers:H()});if(!r.ok)return;const b=await r.blob(),im=new Image;im.onload=()=>{const c=document.createElement('canvas');c.width=im.width;c.height=im.height;const x=c.getContext('2d');x.drawImage(im,0,0);const w=((ME&&ME.name)||'')+' '+((ME&&ME.phone)||''),s=Math.max(11,im.width/40);x.font='bold '+s+'px sans-serif';x.textAlign='right';x.textBaseline='bottom';x.lineWidth=Math.max(1,s/10);x.strokeStyle='rgba(0,0,0,.18)';x.fillStyle='rgba(255,255,255,.28)';x.strokeText(w,im.width-s*.6,im.height-s*.5);x.fillText(w,im.width-s*.6,im.height-s*.5);c.oncontextmenu=e=>e.preventDefault();c.className='nosave';document.getElementById('tp'+id).appendChild(c);URL.revokeObjectURL(im.src)};im.src=URL.createObjectURL(b)}catch(e){}}
 let SF=null;
 function pickImg(inp){const f=inp.files[0];if(!f)return;SF=f;$('#spi').src=URL.createObjectURL(f);$('#sp').hidden=false}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible'&&token&&window.Android&&Android.setSecure)fetch('/api/content',{headers:H()}).then(r=>r.ok?r.json():null).then(d=>{if(d)Android.setSecure(d.secure!==false)}).catch(()=>{})});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible'&&token&&window.Android&&Android.setSecure)fetch('/api/content',{headers:H()}).then(r=>r.ok?r.json():null).then(d=>{if(d){Android.setSecure(d.secure!==false);wm(d.secure===false)}}).catch(()=>{})});
 function clrImg(){SF=null;$('#sp').hidden=true;$('#sc').value='';$('#sg').value=''}
 function svTab(k){['d','e'].forEach(x=>{$('#sv'+x).hidden=x!=k;$('#st'+x).classList.toggle('on',x==k)})}
 const _G={alpha:'α',beta:'β',gamma:'γ',delta:'δ',theta:'θ',lambda:'λ',mu:'μ',sigma:'σ',omega:'ω',phi:'φ',pi:'π',Delta:'Δ',Sigma:'Σ',Omega:'Ω',therefore:'∴',because:'∵',angle:'∠',measuredangle:'∠',triangle:'△',parallel:'∥',perp:'⊥',times:'×',div:'÷',cdot:'·',pm:'±',mp:'∓',leq:'≤',le:'≤',geq:'≥',ge:'≥',neq:'≠',ne:'≠',approx:'≈',equiv:'≡',sim:'∼',cong:'≅',infty:'∞',in:'∈',notin:'∉',subset:'⊂',cup:'∪',cap:'∩',Rightarrow:'⇒',rightarrow:'→',to:'→',Leftrightarrow:'⇔',leftrightarrow:'↔',degree:'°',circ:'°',sum:'∑',int:'∫',forall:'∀',exists:'∃',ldots:'…',dots:'…',overline:'',widehat:'',hat:'',vec:''};
@@ -83,8 +83,14 @@ async function doSolve(k){const o=$('#sr'),btn=$('#sb');const pick=k>=0&&window.
  if(j.error=='ai_not_configured')return o.innerHTML='<div class=warn>الحل الذكي لسه مش متفعل.</div>';
  if(j.error)return o.innerHTML=aiMsg(j);
  showRes(o,j)}catch(e){btn.disabled=false;o.innerHTML=e&&e.name=='AbortError'?'<div class=warn>الرد اتأخر. جرب تاني.</div>':'<div class=warn>لا يوجد اتصال.</div>'}}
+// visible watermark (name, phone, code) shown only when screenshots are allowed
+async function wm(on){let e=document.getElementById('wm');if(!on||!token){if(e)e.remove();return}
+ try{const m=await (await fetch('/api/me',{headers:H()})).json();if(!m||m.role!=='student')return;const t=[m.name,m.phone,m.code].filter(Boolean).join(' - ').replace(/[<>&"']/g,'');
+ const svg='<svg xmlns="http://www.w3.org/2000/svg" width="300" height="170"><text x="150" y="85" text-anchor="middle" transform="rotate(-25 150 85)" font-size="17" font-family="sans-serif" font-weight="700" fill="#7c3aed" fill-opacity="0.28" stroke="#fff" stroke-opacity="0.35" stroke-width="0.6">'+t+'</text></svg>';
+ if(!e){e=document.createElement('div');e.id='wm';document.body.appendChild(e)}
+ e.style.cssText='position:fixed;inset:0;z-index:9999;pointer-events:none;background-image:url("data:image/svg+xml;utf8,'+encodeURIComponent(svg)+'")'}catch(x){}}
 // called by the Android app when a screenshot attempt is detected
-window.onScreenshot=function(){if(!token)return;fetch('/api/security-event',{method:'POST',headers:H(),body:JSON.stringify({type:'screenshot',where:tab})}).catch(()=>{})};
+window.onScreenshot=function(){if(!token)return;try{const b=document.createElement('div');b.style.cssText='position:fixed;top:12px;left:12px;right:12px;z-index:10000;background:#b91c1c;color:#fff;padding:12px;border-radius:12px;text-align:center;font-weight:700';b.textContent='تم تسجيل محاولة تصوير الشاشة باسمك';document.body.appendChild(b);setTimeout(()=>b.remove(),4000)}catch(e){}fetch('/api/security-event',{method:'POST',headers:H(),body:JSON.stringify({type:'screenshot',where:tab})}).catch(()=>{})};
 document.addEventListener('contextmenu',e=>{if(e.target.tagName=='CANVAS'||e.target.tagName=='IMG')e.preventDefault()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
 token?start():chooser();
