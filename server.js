@@ -47,9 +47,11 @@ http.createServer(async(q,r)=>{
    const b=await body(q);
    if(db.settings.closed) return json(r,423,{error:'closed'});
    if(!db.settings.open) return json(r,403,{error:'signup off'});
+   const dv=String(b.device||'').slice(0,40);
+   if(dv){const prev=db.codes.find(x=>x.single&&x.gdev===dv&&!x.disabled);if(prev){db.codes.length;Object.entries(db.sessions).filter(([k,x])=>x.role==='student'&&x.code===prev.code).forEach(([k])=>delete db.sessions[k]);const t0=id()+id();db.sessions[t0]={role:'student',code:prev.code,device:dv};save();return json(r,200,{token:t0,role:'student',registered:!!prev.student,code:prev.code,again:true});}}
    const ip=String(q.headers['x-forwarded-for']||q.socket.remoteAddress||'').split(',')[0].trim(),hr=Math.floor(Date.now()/3600000);
    SIGN[ip+hr]=(SIGN[ip+hr]||0)+1; if(SIGN[ip+hr]>10) return json(r,429,{error:'too many'});
-   const c={code:newCode(),label:'تسجيل مفتوح',maxDevices:0,single:true,devices:[],disabled:false,created:Date.now()};db.codes.push(c);
+   const c={code:newCode(),label:'تسجيل مفتوح',maxDevices:0,single:true,gdev:String(b.device||'').slice(0,40),devices:[],disabled:false,created:Date.now()};db.codes.push(c);
    const t=id()+id();db.sessions[t]={role:'student',code:c.code,device:String(b.device||'')};save();return json(r,200,{token:t,role:'student',registered:false,code:c.code});}
   if(p==='/api/logout'&&q.method==='POST'){delete db.sessions[tok];save();return json(r,200,{ok:1});}
   if(p==='/api/login'&&q.method==='POST'){
@@ -66,7 +68,7 @@ http.createServer(async(q,r)=>{
   const me=isStudent?db.codes.find(x=>x.code===sess.code):null;
   if(isStudent&&(!me||me.disabled)) return json(r,401,{error:'code disabled'});
   if(isStudent&&db.settings.closed) return json(r,423,{error:'closed'});
-  if(p==='/api/me') return json(r,200,{role:sess.role,registered:isStudent?!!me.student:true,name:me&&me.student?me.student.name:'',phone:me&&me.student?me.student.phone:''});
+  if(p==='/api/me') return json(r,200,{role:sess.role,code:isStudent?me.code:'',registered:isStudent?!!me.student:true,name:me&&me.student?me.student.name:'',phone:me&&me.student?me.student.phone:''});
   if(p==='/api/register'&&isStudent){const b=await body(q);const name=String(b.name||'').trim().slice(0,60),phone=String(b.phone||'').replace(/[^0-9+]/g,'').slice(0,20);
    if(!name||phone.length<8) return json(r,400,{error:'name and phone required'});
    const photo=b.photo?saveImg(b.photo):null;me.student={name,phone,photo,date:Date.now()};save();return json(r,200,{ok:1});}
@@ -93,7 +95,7 @@ http.createServer(async(q,r)=>{
    const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80)});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
   if(p==='/api/my-grades'&&isStudent){let st=null,gn='';for(const g of db.mg.groups){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;break}}if(!st)return json(r,200,{linked:false,grades:[]});return json(r,200,{linked:true,name:st.name,group:gn,grades:(st.grades||[]).slice().sort((a,b)=>b.date-a.date)});}
   if(!isAdmin) return json(r,403,{error:'admin only'});
-  if(p==='/api/codes'&&q.method==='GET') return json(r,200,db.codes.map(c=>({...c,student:c.student?{name:c.student.name,phone:c.student.phone,hasPhoto:!!c.student.photo}:null})));
+  if(p==='/api/codes'&&q.method==='GET') return json(r,200,db.codes.map(c=>({...c,student:c.student?{name:c.student.name,phone:c.student.phone,date:c.student.date,hasPhoto:!!c.student.photo}:null})));
   if(p==='/api/codes'&&q.method==='POST'){const b=await body(q);const n=Math.min(+b.count||1,200),out=[];
    for(let i=0;i<n;i++){const c={code:newCode(),label:b.label||'',maxDevices:+b.maxDevices||1,devices:[],disabled:false,created:Date.now()};db.codes.push(c);out.push(c)}
    save();return json(r,200,out);}
