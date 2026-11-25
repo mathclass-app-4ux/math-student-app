@@ -37,7 +37,7 @@ async function solve(text,image,opt){
  if(!text&&!m) return {error:'empty'};
  const img=m?[{inline_data:{mime_type:m[1],data:m[2]}}]:[];
  const call=(parts,gc,ms,mdl)=>fetch((process.env.GEMINI_BASE||'https://generativelanguage.googleapis.com')+'/v1beta/models/'+(mdl||GEMINI_MODEL)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_API_KEY},body:JSON.stringify({contents:[{parts}],generationConfig:gc}),signal:AbortSignal.timeout(ms||85000)});
- const MODELS=[GEMINI_MODEL,...(process.env.GEMINI_FALLBACKS||'gemini-2.5-flash-lite,gemini-2.5-flash').split(',').map(x=>x.trim()).filter(x=>x&&x!==GEMINI_MODEL)];
+ const MODELS=[GEMINI_MODEL,...(process.env.GEMINI_FALLBACKS||'gemini-3.8-flash,gemini-2.5-flash-lite').split(',').map(x=>x.trim()).filter(x=>x&&x!==GEMINI_MODEL)];
  const run=async(parts,tok,think,ms)=>{const one=async(mdl)=>{try{let r=await call(parts,think?{thinkingConfig:{thinkingLevel:think},maxOutputTokens:tok}:{maxOutputTokens:tok},ms,mdl);if(r.status===400)r=await call(parts,{maxOutputTokens:tok},ms,mdl);const j=await r.json().catch(()=>({}));return {r,j}}catch(e){return {r:{ok:false,status:0},j:{}}}};
   let x,first=null;for(const m of MODELS){x=await one(m);if(x.r.ok)return x;if(!first)first=x;if(![429,503,500,404].includes(x.r.status))break}x=first;
   if(!x.r.ok&&(x.r.status===429||x.r.status===503)){await new Promise(z=>setTimeout(z,3000));x=await one(MODELS[0])}return x};
