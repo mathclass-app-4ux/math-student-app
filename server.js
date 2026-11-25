@@ -1,4 +1,7 @@
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
+const ENVADM=[[process.env.ADMIN_USER||'admin',process.env.ADMIN_PASSWORD||'change-me']];for(let n=2;n<=9;n++){const u=process.env['ADMIN'+n+'_USER'],p=process.env['ADMIN'+n+'_PASSWORD'];if(u&&p)ENVADM.push([u,p])}
+const seq=(a,b)=>{const x=crypto.createHash('sha256').update(String(a)).digest(),y=crypto.createHash('sha256').update(String(b)).digest();return crypto.timingSafeEqual(x,y)};
+const hashPw=(p,salt)=>crypto.scryptSync(String(p),salt,32).toString('hex');
 const PORT=process.env.PORT||3000, ADMIN_USER=process.env.ADMIN_USER||'admin', ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'change-me';
 const GEMINI_API_KEY=process.env.GEMINI_API_KEY||'', GEMINI_MODEL=process.env.GEMINI_MODEL||'gemini-3.8-flash';
 const SOLVE_PER_DAY=+process.env.SOLVE_PER_DAY||20;
@@ -56,8 +59,11 @@ http.createServer(async(q,r)=>{
   if(p==='/api/logout'&&q.method==='POST'){delete db.sessions[tok];save();return json(r,200,{ok:1});}
   if(p==='/api/login'&&q.method==='POST'){
    const b=await body(q);
-   if(b.role==='admin'){ if(b.username!==ADMIN_USER||b.password!==ADMIN_PASSWORD) return json(r,401,{error:'bad credentials'});
-     const t=id()+id();db.sessions[t]={role:'admin'};save();return json(r,200,{token:t,role:'admin'});}
+   if(b.role==='admin'){ const un=String(b.username||'').trim().toLowerCase();let who=null;
+     for(const [u,p] of ENVADM)if(seq(u.toLowerCase(),un)&seq(p,b.password||''))who=u;
+     for(const a of (db.admins||[]))if(a.user===un&&seq(a.hash,hashPw(b.password||'',a.salt)))who=a.user;
+     if(!who) return json(r,401,{error:'bad credentials'});
+     const t=id()+id();db.sessions[t]={role:'admin',user:who};save();return json(r,200,{token:t,role:'admin'});}
    const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());
    if(!c||c.disabled) return json(r,401,{error:'invalid code'});
    if(db.settings.closed) return json(r,423,{error:'closed'});
@@ -95,6 +101,13 @@ http.createServer(async(q,r)=>{
    const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80)});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
   if(p==='/api/my-grades'&&isStudent){let st=null,gn='';for(const g of db.mg.groups){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;break}}if(!st)return json(r,200,{linked:false,grades:[]});return json(r,200,{linked:true,name:st.name,group:gn,grades:(st.grades||[]).slice().sort((a,b)=>b.date-a.date)});}
   if(!isAdmin) return json(r,403,{error:'admin only'});
+  if(p==='/api/admins'&&q.method==='GET') return json(r,200,{me:sess.user||'',list:ENVADM.map(x=>({user:x[0],src:'env'})).concat((db.admins||[]).map(a=>({user:a.user,email:a.email||'',by:a.by||'',src:'app'})))});
+  if(p==='/api/admins/add'&&q.method==='POST'){const b=await body(q),u=String(b.username||'').trim().toLowerCase(),pw=String(b.password||''),em=String(b.email||'').trim().slice(0,80);
+   if(!/^[a-z0-9_.]{3,30}$/.test(u)) return json(r,400,{error:'اسم المستخدم حروف إنجليزي وأرقام (3 على الأقل)'});
+   if(pw.length<8) return json(r,400,{error:'كلمة السر 8 حروف على الأقل'});
+   if(ENVADM.some(x=>x[0].toLowerCase()===u)||(db.admins||[]).some(a=>a.user===u)) return json(r,400,{error:'اسم المستخدم موجود'});
+   const salt=crypto.randomBytes(16).toString('hex');db.admins=db.admins||[];db.admins.push({user:u,email:em,salt,hash:hashPw(pw,salt),by:sess.user||'',date:Date.now()});save();return json(r,200,{ok:1});}
+  if(p==='/api/admins/delete'&&q.method==='POST'){const b=await body(q),u=String(b.username||'').toLowerCase();if(u===String(sess.user||'').toLowerCase())return json(r,400,{error:'مينفعش تحذف حسابك'});db.admins=(db.admins||[]).filter(a=>a.user!==u);for(const k of Object.keys(db.sessions))if(db.sessions[k].role==='admin'&&db.sessions[k].user===u)delete db.sessions[k];save();return json(r,200,{ok:1});}
   if(p==='/api/codes'&&q.method==='GET') return json(r,200,db.codes.map(c=>({...c,student:c.student?{name:c.student.name,phone:c.student.phone,date:c.student.date,hasPhoto:!!c.student.photo}:null})));
   if(p==='/api/codes'&&q.method==='POST'){const b=await body(q);const n=Math.min(+b.count||1,200),out=[];
    for(let i=0;i<n;i++){const c={code:newCode(),label:b.label||'',maxDevices:+b.maxDevices||1,devices:[],disabled:false,created:Date.now()};db.codes.push(c);out.push(c)}
