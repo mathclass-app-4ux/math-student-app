@@ -30,6 +30,21 @@ const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',newCode=()=>{let s='';for(let i=0;i<8
 const saveImg=im=>{const m=/^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(im||'');if(!m)return null;const f=id()+'.'+(m[1]==='jpeg'?'jpg':m[1]);fs.writeFileSync(path.join(UP,f),Buffer.from(m[2],'base64'));return f};
 const isApp=q=>(q.headers['user-agent']||'').includes('MathAppAPK');
 const day=()=>new Date().toISOString().slice(0,10);
+const nrm=t=>String(t||'').toLowerCase().replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[\s$\\{}]+/g,'').replace(/[.,،؟?!:;]+$/g,'');
+const ckey=t=>{const n=nrm(t);return n.length<3?null:crypto.createHash('sha1').update(n).digest('hex').slice(0,20)};
+const cacheKey=(text,image,pick)=>{if(!image)return text?ckey(text):null;if(pick&&pick.text&&!text&&String(pick.text).length<300)return ckey(pick.text);return null};
+const st=()=>{db.stats=db.stats||{};const d=day();if(!db.stats[d]){db.stats[d]={ai:0,hits:0,fail:0,quota:0,det:0};const ks=Object.keys(db.stats).sort();while(ks.length>14)delete db.stats[ks.shift()]}return db.stats[d]};
+const perStudent=()=>db.settings.perStudent>0?db.settings.perStudent:SOLVE_PER_DAY,listLimit=()=>db.settings.listLimit>0?db.settings.listLimit:40;
+const capHit=()=>{const c=+db.settings.globalCap||0;if(!c)return false;const t=st();return t.ai+t.det>=c};
+const getHit=(text,image,pick)=>{const k=cacheKey(text,image,pick);return k&&db.cache&&db.cache[k]?k:null};
+async function solveC(text,image,opt){opt=opt||{};
+ if(opt.detect){const o=await solve(text,image,opt);if(o.error){st().fail++;if(o.error==='ai_busy')st().quota++}else st().det++;return o}
+ const k=cacheKey(text,image,opt.pick);
+ if(k&&db.cache&&db.cache[k]){const c=db.cache[k];c.h=(c.h||0)+1;st().hits++;return {direct:c.d,explained:c.e,cached:true}}
+ const o=await solve(text,image,opt);
+ if(o.error){if(o.error!=='empty'){st().fail++;if(o.error==='ai_busy')st().quota++}}
+ else{st().ai++;if(k&&!o.truncated&&o.direct!=='UNREADABLE'&&(o.direct||o.explained)){db.cache=db.cache||{};db.cache[k]={d:o.direct,e:o.explained,t:Date.now(),h:0};const ks=Object.keys(db.cache);if(ks.length>3000){ks.sort((a,b)=>db.cache[a].t-db.cache[b].t).slice(0,ks.length-3000).forEach(x=>delete db.cache[x])}}}
+ return o}
 async function solve(text,image,opt){
  opt=opt||{};
  if(!GEMINI_API_KEY) return {error:'ai_not_configured'};
@@ -44,13 +59,13 @@ async function solve(text,image,opt){
  const aiErr=(r,j)=>({model:GEMINI_MODEL,error:(r.status===429||r.status===503)?'ai_busy':r.status===0?'ai_timeout':'ai_failed',status:r.status,detail:(j.error&&j.error.message||'').slice(0,200)});
  const textOf=j=>((j.candidates||[])[0]?.content?.parts||[]).map(p=>p.text||'').join('');
  if(opt.detect){
-  const {r,j}=await run([{text:'Look at the image. List every separate math problem or question you can see, in the order they appear (top to bottom). Reply with ONLY JSON, no other text, in this shape: {"problems":[{"n":1,"text":"<short transcription of the problem start, max 100 characters, English digits and symbols>"}]}. If there is only one problem, or the image is unreadable, return at most one entry.'},...img],3000,'low',30000);
+  const {r,j}=await run([{text:'Look at the image. List every separate math problem or question you can see, in the order they appear (top to bottom). Reply with ONLY JSON, no other text, in this shape: {"problems":[{"n":1,"text":"<full transcription of that problem, max 280 characters, English digits and symbols>"}]}. If there is only one problem, or the image is unreadable, return at most one entry.'},...img],3000,'low',30000);
   if(!r.ok) return aiErr(r,j);
-  const t=textOf(j).replace(/```json|```/g,'').trim();let pr=[];try{pr=(JSON.parse(t).problems||[]).slice(0,30).map((x,i)=>({n:+x.n||i+1,text:String(x.text||'').slice(0,140)}))}catch(e){}
+  const t=textOf(j).replace(/```json|```/g,'').trim();let pr=[];try{pr=(JSON.parse(t).problems||[]).slice(0,30).map((x,i)=>({n:+x.n||i+1,text:String(x.text||'').slice(0,300)}))}catch(e){}
   return {problems:pr};
  }
  const parts=[{text:'You are a math teacher for Egyptian students. Solve the problem in the text and/or image. FORMATTING RULES: write math as plain Unicode text only. Never use LaTeX, never use $ or backslash commands, never use markdown. Use real symbols: ∴ (therefore), ∵ (because), ∠ (angle), △ (triangle), ∥ (parallel), ⊥ (perpendicular), π, √, ≤ ≥ ≠ ≈, ×, ÷, ±, °, ∈, ∞, ⇒, ², ³, superscripts/subscripts as Unicode, and write fractions like (a)/(b) or a/b. Reply in exactly this format:\nDIRECT:\n<the short final solution steps; use English digits and math symbols only, no Arabic words>\nEXPLAINED:\n<step by step explanation in simple Egyptian Arabic; keep all numbers, variables and symbols in English>\nIf the image is not a math problem or is unreadable, reply with DIRECT:\nUNREADABLE\nEXPLAINED:\nالصورة مش واضحة'}];
- if(opt.pick&&opt.pick.n) parts.push({text:'The image has several problems. Solve ONLY problem number '+(+opt.pick.n)+(opt.pick.text?' (it starts with: '+String(opt.pick.text).slice(0,140)+')':'')+'. Ignore every other problem in the image.'});
+ if(opt.pick&&opt.pick.n) parts.push({text:'The image has several problems. Solve ONLY problem number '+(+opt.pick.n)+(opt.pick.text?' (it starts with: '+String(opt.pick.text).slice(0,300)+')':'')+'. Ignore every other problem in the image.'});
  if(text) parts.push({text:'Problem text: '+text});
  parts.push(...img);
  let {r,j}=await run(parts,8000,'low');
@@ -81,11 +96,14 @@ http.createServer(async(q,r)=>{
    const b=await body(q),det=!!b.detect,d=day();
    if(SL.d!==d){SL={d,all:0,dev:{},ip:{}}}
    const w=det?1:3;
-   if(SL.all+w>SOLVER_DAY_ALL) return cj(429,{error:'busy'});
-   if((SL.dev[dev]||0)+w>SOLVER_DAY_DEV*3||(SL.ip[ip]||0)+w>SOLVER_DAY_IP*3) return cj(429,{error:'daily_limit'});
    if(b.image&&String(b.image).length>6e6) return cj(413,{error:'too_big'});
-   const out=await solve(det?'':String(b.text||'').slice(0,3000),b.image,det?{detect:true}:{pick:b.pick});
-   if(!out.error){SL.all+=w;SL.dev[dev]=(SL.dev[dev]||0)+w;SL.ip[ip]=(SL.ip[ip]||0)+w}
+   const stx=det?'':String(b.text||'').slice(0,3000),hit2=det?null:getHit(stx,b.image,b.pick);
+   if(!hit2){
+   if(SL.all+w>SOLVER_DAY_ALL||capHit()) return cj(429,{error:'busy'});
+   if((SL.dev[dev]||0)+w>SOLVER_DAY_DEV*3||(SL.ip[ip]||0)+w>SOLVER_DAY_IP*3) return cj(429,{error:'daily_limit'});}
+   const out=await solveC(stx,b.image,det?{detect:true}:{pick:b.pick});
+   if(!out.error&&!out.cached){SL.all+=w;SL.dev[dev]=(SL.dev[dev]||0)+w;SL.ip[ip]=(SL.ip[ip]||0)+w}
+   save();
    return cj(out.error==='empty'?400:out.error?502:200,out);}
   if(p==='/api/status') return json(r,200,{open:!!db.settings.open,closed:!!db.settings.closed});
   if(p==='/api/signup'&&q.method==='POST'){
@@ -135,10 +153,12 @@ http.createServer(async(q,r)=>{
   if(p==='/api/solve'&&q.method==='POST'){
    if(isStudent&&!me.student) return json(r,403,{error:'register first'});
    const key=isStudent?me.code:'admin',k=key+day();db.solves[k]=(db.solves[k]||0);const b=await body(q);
-   if(b.detect){const dk='d'+k;db.solves[dk]=(db.solves[dk]||0);if(isStudent&&db.solves[dk]>=40)return json(r,429,{error:'daily_limit'});const o2=await solve('',b.image,{detect:true});if(!o2.error){db.solves[dk]++;save()}return json(r,o2.error?502:200,o2);}
-   if(isStudent&&db.solves[k]>=SOLVE_PER_DAY) return json(r,429,{error:'daily_limit',limit:SOLVE_PER_DAY});
-   const out=await solve(String(b.text||'').slice(0,3000),b.image,{pick:b.pick});
-   if(!out.error){db.solves[k]++;for(const o in db.solves) if(!o.endsWith(day())) delete db.solves[o];save()}
+   if(b.detect){const dk='d'+k;db.solves[dk]=(db.solves[dk]||0);if(isStudent&&db.solves[dk]>=listLimit())return json(r,429,{error:'daily_limit'});if(capHit())return json(r,429,{error:'busy'});const o2=await solveC('',b.image,{detect:true});if(!o2.error){db.solves[dk]++}save();return json(r,o2.error?502:200,o2);}
+   const txt=String(b.text||'').slice(0,3000),hit=getHit(txt,b.image,b.pick);
+   if(!hit){if(isStudent&&db.solves[k]>=perStudent()) return json(r,429,{error:'daily_limit',limit:perStudent()});if(capHit())return json(r,429,{error:'busy'})}
+   const out=await solveC(txt,b.image,{pick:b.pick});
+   if(!out.error&&!out.cached){db.solves[k]++;for(const o in db.solves) if(!o.endsWith(day())&&!o.endsWith(day()+'')) delete db.solves[o]}
+   save();
    return json(r,out.error==='empty'?400:out.error?502:200,out);}
   if(p==='/api/security-event'&&isStudent&&q.method==='POST'){
    const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80)});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
@@ -166,6 +186,8 @@ http.createServer(async(q,r)=>{
   if(p==='/api/codes/toggle'){const b=await body(q);const c=db.codes.find(x=>x.code===b.code);if(c){c.disabled=!c.disabled;save()}return json(r,200,{ok:1});}
   if(p==='/api/codes/delete'){const b=await body(q);db.codes=db.codes.filter(x=>x.code!==b.code);save();return json(r,200,{ok:1});}
   if(p==='/api/student-photo'){const c=db.codes.find(x=>x.code===u.searchParams.get('code'));if(!c||!c.student||!c.student.photo)return json(r,404,{error:'none'});const f=path.join(UP,path.basename(c.student.photo));r.writeHead(200,{'Content-Type':types[path.extname(f)]||'image/jpeg'});return fs.createReadStream(f).pipe(r);}
+  if(p==='/api/solve-admin'&&q.method==='GET'){const ks=Object.keys(db.stats||{}).sort().slice(-7).reverse();return json(r,200,{cfg:{perStudent:db.settings.perStudent||0,listLimit:db.settings.listLimit||0,globalCap:db.settings.globalCap||0},defaults:{perStudent:SOLVE_PER_DAY,listLimit:40},today:st(),days:ks.map(d=>({d,...db.stats[d]})),cacheSize:Object.keys(db.cache||{}).length,cacheHitsTotal:Object.values(db.cache||{}).reduce((a,c)=>a+(c.h||0),0)});}
+  if(p==='/api/solve-admin'&&q.method==='POST'){const b=await body(q);const cl=(v,m)=>Math.max(0,Math.min(m,Math.floor(+v||0)));if('perStudent' in b)db.settings.perStudent=cl(b.perStudent,500);if('listLimit' in b)db.settings.listLimit=cl(b.listLimit,500);if('globalCap' in b)db.settings.globalCap=cl(b.globalCap,100000);if(b.clearCache)db.cache={};save();return json(r,200,{ok:1});}
   if(p==='/api/settings'&&q.method==='POST'){const b=await body(q);for(const k of ['secure','open','closed'])if(k in b)db.settings[k]=!!b[k];save();return json(r,200,{ok:1});}
   if(p==='/api/codes/endsession'){const b=await body(q);for(const k of Object.keys(db.sessions))if(db.sessions[k].code===b.code)delete db.sessions[k];save();return json(r,200,{ok:1});}
   if(p==='/api/logs') return json(r,200,db.logs);
