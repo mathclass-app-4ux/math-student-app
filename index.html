@@ -1,0 +1,18 @@
+<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Math Student App</title><link rel="stylesheet" href="style.css"></head><body>
+<header>تطبيق الرياضيات</header><main id="app"></main>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');let token=localStorage.t;
+const dev=localStorage.d||(localStorage.d=Math.random().toString(36).slice(2));
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function login(msg){app.innerHTML=`<div class=card><h3>ادخل الكود</h3><input id=c placeholder="CODE" style="direction:ltr;text-transform:uppercase"><button onclick=go()>دخول</button><p style=color:#dc2626>${msg||''}</p></div>`}
+async function go(){const r=await fetch('/api/login',{method:'POST',body:JSON.stringify({code:$('#c').value,device:dev})});const j=await r.json();if(!r.ok)return login(j.error=='invalid code'?'الكود غير صحيح':j.error=='code already used on another device'?'الكود مستخدم على جهاز آخر':j.error);token=localStorage.t=j.token;load()}
+async function load(){let d,off=false;try{const r=await fetch('/api/content',{headers:{Authorization:'Bearer '+token}});if(!r.ok){localStorage.removeItem('t');localStorage.removeItem('cache');return login()}d=await r.json();localStorage.cache=JSON.stringify(d)}catch(e){if(!localStorage.cache)return login('لا يوجد اتصال بالإنترنت');d=JSON.parse(localStorage.cache);off=true}
+ 
+ let h=(off?'<div class=card style="background:#fef3c7">لا يوجد إنترنت. بتشوف آخر محتوى محفوظ.</div>':'')+`<div class="card links"><b>تواصل مع الأستاذ</b><br><a href="${d.links.whatsapp}">WhatsApp</a>${d.links.facebook.map(l=>`<a href="${l.url}">Facebook: ${l.name}</a>`).join('')}<br><span class=num>${d.links.phone}</span></div>`;
+ h+='<h3>الأوائل والإعلانات</h3>'+(d.posts.map(p=>`<div class=card><b>${esc(p.title)}</b><p>${esc(p.text)}</p>${p.images.map(i=>`<img src="${i}">`).join('')}</div>`).join('')||'<p>لا يوجد محتوى بعد</p>');
+ h+='<h3>الأسئلة والحلول</h3>'+(d.questions.map((x,i)=>`<div class=card><small>${esc(x.subject)}</small><div class=num><b>${esc(x.question)}</b></div><button class=sec onclick="t('d${i}')">الحل المباشر</button> <button class=sec onclick="t('e${i}')">الحل بالشرح</button><div id=d${i} class="sol num" hidden>${esc(x.direct)}</div><div id=e${i} class=ex hidden>${esc(x.explained)}</div></div>`).join('')||'<p>لا توجد أسئلة بعد</p>');
+ app.innerHTML=h}
+function t(i){const e=document.getElementById(i);e.hidden=!e.hidden}
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
+token?load():login();
+</script></body></html>
