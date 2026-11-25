@@ -14,7 +14,7 @@ const LINKS={whatsapp:'https://wa.me/201142104969',facebook:[
  {name:'Group',url:'https://www.facebook.com/share/g/14wPVxcD8uP/'},
  {name:'Page 2',url:'https://www.facebook.com/share/1JDvGSC1Cd/'}],phone:'01142104969'};
 const id=()=>crypto.randomBytes(6).toString('hex');
-const json=(r,c,o)=>{r.writeHead(c,{'Content-Type':'application/json'});r.end(JSON.stringify(o))};
+const json=(r,c,o)=>{r.writeHead(c,{'Content-Type':'application/json','Cache-Control':'no-store'});r.end(JSON.stringify(o))};
 const body=q=>new Promise(res=>{let b=[],n=0;q.on('data',d=>{n+=d.length;if(n<12e6)b.push(d)});q.on('end',()=>{try{res(JSON.parse(Buffer.concat(b)))}catch{res({})}})});
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp'};
 const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',newCode=()=>{let s='';for(let i=0;i<8;i++)s+=A[crypto.randomInt(A.length)];return s};
@@ -44,12 +44,13 @@ http.createServer(async(q,r)=>{
  if(p.startsWith('/api/')){
   if(p==='/api/status') return json(r,200,{open:!!db.settings.open,closed:!!db.settings.closed});
   if(p==='/api/signup'&&q.method==='POST'){
+   const b=await body(q);
    if(db.settings.closed) return json(r,423,{error:'closed'});
    if(!db.settings.open) return json(r,403,{error:'signup off'});
    const ip=String(q.headers['x-forwarded-for']||q.socket.remoteAddress||'').split(',')[0].trim(),hr=Math.floor(Date.now()/3600000);
    SIGN[ip+hr]=(SIGN[ip+hr]||0)+1; if(SIGN[ip+hr]>10) return json(r,429,{error:'too many'});
    const c={code:newCode(),label:'تسجيل مفتوح',maxDevices:0,single:true,devices:[],disabled:false,created:Date.now()};db.codes.push(c);
-   const t=id()+id();db.sessions[t]={role:'student',code:c.code};save();return json(r,200,{token:t,role:'student',registered:false,code:c.code});}
+   const t=id()+id();db.sessions[t]={role:'student',code:c.code,device:String(b.device||'')};save();return json(r,200,{token:t,role:'student',registered:false,code:c.code});}
   if(p==='/api/logout'&&q.method==='POST'){delete db.sessions[tok];save();return json(r,200,{ok:1});}
   if(p==='/api/login'&&q.method==='POST'){
    const b=await body(q);
@@ -58,9 +59,9 @@ http.createServer(async(q,r)=>{
    const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());
    if(!c||c.disabled) return json(r,401,{error:'invalid code'});
    if(db.settings.closed) return json(r,423,{error:'closed'});
-   if(c.single&&Object.values(db.sessions).some(x=>x.role==='student'&&x.code===c.code)) return json(r,403,{error:'code already logged in'});
+   if(c.single){const act=Object.entries(db.sessions).filter(([k,x])=>x.role==='student'&&x.code===c.code);if(act.some(([k,x])=>!x.device||x.device!==b.device)) return json(r,403,{error:'code already logged in'});act.forEach(([k])=>delete db.sessions[k]);}
    if(c.maxDevices&&!c.devices.includes(b.device)){ if(c.devices.length>=c.maxDevices) return json(r,403,{error:'code already used on another device'}); c.devices.push(b.device);}
-   const t=id()+id();db.sessions[t]={role:'student',code:c.code};save();return json(r,200,{token:t,role:'student',registered:!!c.student});}
+   const t=id()+id();db.sessions[t]={role:'student',code:c.code,device:b.device||''};save();return json(r,200,{token:t,role:'student',registered:!!c.student});}
   if(!sess) return json(r,401,{error:'login required'});
   const me=isStudent?db.codes.find(x=>x.code===sess.code):null;
   if(isStudent&&(!me||me.disabled)) return json(r,401,{error:'code disabled'});
