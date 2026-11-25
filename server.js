@@ -68,6 +68,7 @@ http.createServer(async(q,r)=>{
    const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type,X-App-Key,X-Device','Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Max-Age':'86400'};
    if(q.method==='OPTIONS'){r.writeHead(204,cors);return r.end()}
    const cj=(c,o)=>{r.writeHead(c,{'Content-Type':'application/json','Cache-Control':'no-store',...cors});r.end(JSON.stringify(o))};
+   if(q.method==='GET'&&u.searchParams.get('links')) return cj(200,{links:LINKS});
    if(q.method!=='POST') return cj(405,{error:'method'});
    if(SOLVER_KEY&&q.headers['x-app-key']!==SOLVER_KEY) return cj(403,{error:'bad_app'});
    const dev=String(q.headers['x-device']||'').replace(/[^\w-]/g,'').slice(0,40);
