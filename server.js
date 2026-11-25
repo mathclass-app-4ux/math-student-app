@@ -39,9 +39,9 @@ async function solve(text,image,opt){
  const call=(parts,gc,ms,mdl)=>fetch((process.env.GEMINI_BASE||'https://generativelanguage.googleapis.com')+'/v1beta/models/'+(mdl||GEMINI_MODEL)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_API_KEY},body:JSON.stringify({contents:[{parts}],generationConfig:gc}),signal:AbortSignal.timeout(ms||85000)});
  const MODELS=[GEMINI_MODEL,...(process.env.GEMINI_FALLBACKS||'gemini-2.5-flash-lite,gemini-2.5-flash').split(',').map(x=>x.trim()).filter(x=>x&&x!==GEMINI_MODEL)];
  const run=async(parts,tok,think,ms)=>{const one=async(mdl)=>{try{let r=await call(parts,think?{thinkingConfig:{thinkingLevel:think},maxOutputTokens:tok}:{maxOutputTokens:tok},ms,mdl);if(r.status===400)r=await call(parts,{maxOutputTokens:tok},ms,mdl);const j=await r.json().catch(()=>({}));return {r,j}}catch(e){return {r:{ok:false,status:0},j:{}}}};
-  let x;for(const m of MODELS){x=await one(m);if(x.r.ok)return x;if(![429,503,500,404].includes(x.r.status))break}
+  let x,first=null;for(const m of MODELS){x=await one(m);if(x.r.ok)return x;if(!first)first=x;if(![429,503,500,404].includes(x.r.status))break}x=first;
   if(!x.r.ok&&(x.r.status===429||x.r.status===503)){await new Promise(z=>setTimeout(z,3000));x=await one(MODELS[0])}return x};
- const aiErr=(r,j)=>({error:(r.status===429||r.status===503)?'ai_busy':r.status===0?'ai_timeout':'ai_failed',status:r.status,detail:(j.error&&j.error.message||'').slice(0,200)});
+ const aiErr=(r,j)=>({model:GEMINI_MODEL,error:(r.status===429||r.status===503)?'ai_busy':r.status===0?'ai_timeout':'ai_failed',status:r.status,detail:(j.error&&j.error.message||'').slice(0,200)});
  const textOf=j=>((j.candidates||[])[0]?.content?.parts||[]).map(p=>p.text||'').join('');
  if(opt.detect){
   const {r,j}=await run([{text:'Look at the image. List every separate math problem or question you can see, in the order they appear (top to bottom). Reply with ONLY JSON, no other text, in this shape: {"problems":[{"n":1,"text":"<short transcription of the problem start, max 100 characters, English digits and symbols>"}]}. If there is only one problem, or the image is unreadable, return at most one entry.'},...img],3000,'low',30000);
