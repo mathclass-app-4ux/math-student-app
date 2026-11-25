@@ -76,7 +76,7 @@ const vPub=()=>back+`<div class=card><h3>نشر</h3><select id=pk style="width:1
  `;
 const vSec=()=>back+`<div class=card><h3>حماية الصور</h3><p>${adD.secure!==false?'الوضع الحالي: منع التصوير (السكرين شوت بيطلع أسود ومش بيتسجل)':'الوضع الحالي: تسجيل المحاولات (السكرين شوت مسموح وبيتسجل مين صوّر، أندرويد 14+)'}</p><button onclick="api('settings',{secure:${adD.secure===false}}).then(show)">${adD.secure!==false?'غيّر لوضع تسجيل المحاولات':'غيّر لوضع منع التصوير'}</button></div>
  <div class=card><h3>ملخص: كل طالب كام مرة حاول يصور</h3>${(()=>{const m={};adL.forEach(l=>{const k=l.code||l.name;const o=m[k]||(m[k]={name:l.name||l.code,phone:l.phone||'',n:0,last:0});o.n++;if(l.date>o.last)o.last=l.date});const a=Object.values(m).sort((x,y)=>y.n-x.n||y.last-x.last);return a.map(o=>`<p><b>${esc(o.name)}</b> <span class=num>${esc(o.phone)}</span><br>عدد المحاولات: <b class=num>${o.n}</b> | آخر مرة: ${fd(o.last)}</p>`).join('')||'<p>لا يوجد</p>'})()}</div>
- <div class=card><h3>محاولات تصوير الشاشة (${adL.length})</h3>${adL.map(l=>`<p>${fd(l.date)}: ${esc(l.name||l.code)} <span class=num>${esc(l.phone||'')}</span> حاول يصور الشاشة${l.where=='top'?' في صور الأوائل':''}</p>`).join('')||'<p>لا يوجد</p>'}</div>
+ <div class=card><h3>محاولات تصوير الشاشة (${adL.length})</h3>${adL.map(l=>`<p>${fd(l.date)}: ${esc(l.name||l.code)} <span class=num>${esc(l.phone||'')}</span> حاول يصور الشاشة${l.where=='top'?' في صور الأوائل'+((l.posts&&l.posts.length)?(l.posts.length>1?' (ظاهر أكتر من بوست: ':' (البوست: ')+l.posts.map(q=>'«'+esc(q.title||q.text||q.id)+'»'+(l.posts.length>1?' '+q.pct+'%':'')).join('، ')+')':''):''}</p>`).join('')||'<p>لا يوجد</p>'}</div>
  `;
 const vQa=()=>back+``;
 const DAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
