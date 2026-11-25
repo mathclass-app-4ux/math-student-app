@@ -52,14 +52,25 @@ let SF=null;
 function pickImg(inp){const f=inp.files[0];if(!f)return;SF=f;$('#spi').src=URL.createObjectURL(f);$('#sp').hidden=false}
 function clrImg(){SF=null;$('#sp').hidden=true;$('#sc').value='';$('#sg').value=''}
 function svTab(k){['d','e'].forEach(x=>{$('#sv'+x).hidden=x!=k;$('#st'+x).classList.toggle('on',x==k)})}
+async function getImg(){if(!SF)return null;if(window._imgF!==SF){window._img=await small(SF,1600,.8);window._imgF=SF}return window._img}
+function showRes(o,j){o.innerHTML=`<div class=seg><button id=std class=on onclick="svTab('d')">الحل المباشر</button><button id=ste onclick="svTab('e')">الحل بالشرح</button></div><div id=svd class="res d num">${esc(j.direct)}</div><div id=sve class="res e" hidden>${esc(j.explained)}</div>${j.truncated?'<div class=warn>المسألة طويلة جداً والحل اتقطع. جرب تحل جزء جزء (صوّر الجزء اللي عايزه بس).</div>':''}`}
 async function solve(){const o=$('#sr'),btn=$('#sb');if(!$('#st').value.trim()&&!SF){o.innerHTML='<div class=warn>اكتب المسألة أو صورها الأول.</div>';return}
- btn.disabled=true;o.innerHTML='<div class=load><span class=spin></span>جاري الحل... ممكن ياخد من 10 ل 40 ثانية</div>';
- try{const image=SF?await small(SF,1000,.7):null;
- const r=await fetch('/api/solve',{method:'POST',headers:H(),body:JSON.stringify({text:$('#st').value,image})});const j=await r.json();btn.disabled=false;
+ btn.disabled=true;
+ if(SF&&!$('#st').value.trim()){o.innerHTML='<div class=load><span class=spin></span>جاري قراءة الصورة...</div>';
+  try{const image=await getImg();const r=await fetch('/api/solve',{method:'POST',headers:H(),body:JSON.stringify({detect:true,image})});
+   if(r.ok){const j=await r.json();if((j.problems||[]).length>1){btn.disabled=false;window.PR=j.problems;
+     o.innerHTML='<div class=card><b>لقيت '+j.problems.length+' مسائل في الصورة. اختار المسألة اللي عايز تحلها:</b>'+j.problems.map((p,k)=>`<button class="sec prob" onclick="doSolve(${k})"><b class=num>${p.n}</b> ${esc(p.text)}</button>`).join('')+'<p><small>لو المسألة مش ظاهرة، اكتب رقمها أو نصها في الخانة فوق واضغط احسب.</small></p></div>';return}}
+   else if(r.status==429)return o.innerHTML='<div class=warn>وصلت للحد اليومي. جرب بكرة.</div>',btn.disabled=false}catch(e){}
+ }
+ doSolve(-1)}
+async function doSolve(k){const o=$('#sr'),btn=$('#sb');const pick=k>=0&&window.PR?window.PR[k]:null;
+ btn.disabled=true;o.innerHTML='<div class=load><span class=spin></span>جاري الحل... ممكن ياخد من 10 ل 60 ثانية'+(pick?' (مسألة '+pick.n+')':'')+'</div>';
+ try{const image=await getImg();
+ const r=await fetch('/api/solve',{method:'POST',headers:H(),body:JSON.stringify({text:$('#st').value,image,pick:pick?{n:pick.n,text:pick.text}:undefined})});const j=await r.json();btn.disabled=false;
  if(r.status==429)return o.innerHTML='<div class=warn>وصلت للحد اليومي للحلول. جرب بكرة.</div>';
  if(j.error=='ai_not_configured')return o.innerHTML='<div class=warn>الحل الذكي لسه مش متفعل.</div>';
  if(j.error)return o.innerHTML='<div class=warn>حصلت مشكلة، حاول تاني.</div>';
- o.innerHTML=`<div class=seg><button id=std class=on onclick="svTab('d')">الحل المباشر</button><button id=ste onclick="svTab('e')">الحل بالشرح</button></div><div id=svd class="res d num">${esc(j.direct)}</div><div id=sve class="res e" hidden>${esc(j.explained)}</div>`}catch(e){btn.disabled=false;o.innerHTML='<div class=warn>لا يوجد اتصال.</div>'}}
+ showRes(o,j)}catch(e){btn.disabled=false;o.innerHTML='<div class=warn>لا يوجد اتصال.</div>'}}
 // called by the Android app when a screenshot attempt is detected
 window.onScreenshot=function(){if(!token)return;fetch('/api/security-event',{method:'POST',headers:H(),body:JSON.stringify({type:'screenshot',where:tab})}).catch(()=>{})};
 document.addEventListener('contextmenu',e=>{if(e.target.tagName=='CANVAS'||e.target.tagName=='IMG')e.preventDefault()});
