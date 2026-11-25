@@ -17,3 +17,17 @@ canvas{max-width:100%;border-radius:8px;margin:6px 0;display:block}.warn{backgro
 .igb{display:flex;align-items:center;gap:8px;padding:8px 12px;font-weight:bold}
 .bry{background:none;border:0;font-size:28px;padding:0;margin:0;cursor:pointer;width:auto;line-height:1}
 .igc{padding:0 12px 12px;margin:0}
+
+.sv{background:#fff;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 4px 18px #1d4ed822}
+.svh{display:flex;gap:12px;align-items:center;margin-bottom:12px}.svh small{display:block;color:#64748b;font-size:13px;margin-top:2px}
+.svi{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#1d4ed8,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:24px}
+.svt{border:2px solid #e2e8f0;border-radius:14px;background:#f8fafc;padding:12px;font-size:17px;resize:vertical}.svt:focus{outline:0;border-color:#1d4ed8;background:#fff}
+.svrow{display:flex;gap:8px;margin:8px 0}.pick{flex:1;text-align:center;padding:12px 6px;border:2px dashed #93a4c8;border-radius:14px;color:#1d4ed8;font-weight:600;cursor:pointer;background:#f5f8ff}
+.svp{position:relative;margin:8px 0}.svp img{width:100%;max-height:220px;object-fit:contain;background:#f1f5f9;border-radius:14px;margin:0}
+.svx{position:absolute;top:8px;left:8px;width:32px;height:32px;padding:0;border-radius:50%;background:#000a;color:#fff}
+.go{display:block;width:100%;padding:15px;font-size:18px;font-weight:700;border-radius:14px;background:linear-gradient(135deg,#1d4ed8,#7c3aed);margin:10px 0}.go:disabled{opacity:.6}
+.load{display:flex;align-items:center;gap:10px;justify-content:center;padding:18px;color:#475569}
+.spin{width:22px;height:22px;border:3px solid #cbd5e1;border-top-color:#1d4ed8;border-radius:50%;animation:sp 0.8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.seg{display:flex;background:#e8edf6;border-radius:14px;padding:4px;gap:4px;margin:10px 0}.seg button{flex:1;margin:0;background:transparent;color:#475569;border-radius:10px;font-weight:600}.seg button.on{background:#fff;color:#1d4ed8;box-shadow:0 1px 4px #0002}
+.res{border-radius:14px;padding:14px;line-height:1.9;font-size:16px;white-space:pre-wrap}.res.d{background:#ecfdf5;border:1px solid #a7f3d0;font-size:18px}.res.e{background:#fffbeb;border:1px solid #fde68a}
+.svn{font-size:12.5px;color:#92400e;background:#fef3c7;border-radius:10px;padding:8px 10px;margin-top:10px}
