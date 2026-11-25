@@ -36,8 +36,110 @@ const cacheKey=(text,image,pick)=>{if(!image)return text?ckey(text):null;if(pick
 const st=()=>{db.stats=db.stats||{};const d=day();if(!db.stats[d]){db.stats[d]={ai:0,hits:0,fail:0,quota:0,det:0};const ks=Object.keys(db.stats).sort();while(ks.length>14)delete db.stats[ks.shift()]}return db.stats[d]};
 const perStudent=()=>db.settings.perStudent>0?db.settings.perStudent:SOLVE_PER_DAY,listLimit=()=>db.settings.listLimit>0?db.settings.listLimit:40;
 const capHit=()=>{const c=+db.settings.globalCap||0;if(!c)return false;const t=st();return t.ai+t.det>=c};
-const getHit=(text,image,pick)=>{const k=cacheKey(text,image,pick);return k&&db.cache&&db.cache[k]?k:null};
+const getHit=(text,image,pick)=>{if(!image&&text&&typeof localSolve==='function'&&localSolve(text))return 'local';const k=cacheKey(text,image,pick);return k&&db.cache&&db.cache[k]?k:null};
+// ===== local math engine (free, no AI): numbers, linear/quadratic equations, 2x2 systems, polynomial derivative/integral =====
+const LM=(()=>{
+ const LIM=1e15,gcd=(a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b]}return a||1};
+ const F=(n,d=1)=>{if(!Number.isFinite(n)||!Number.isFinite(d)||d===0)throw 0;if(d<0){n=-n;d=-d}const g=gcd(n,d);n/=g;d/=g;if(Math.abs(n)>LIM||d>LIM)throw 0;return {n,d}};
+ const add=(a,b)=>F(a.n*b.d+b.n*a.d,a.d*b.d),sub=(a,b)=>F(a.n*b.d-b.n*a.d,a.d*b.d),mul=(a,b)=>F(a.n*b.n,a.d*b.d),dv=(a,b)=>F(a.n*b.d,a.d*b.n),neg=a=>F(-a.n,a.d),isz=a=>a.n===0;
+ const fs=a=>a.d===1?String(a.n):a.n+'/'+a.d,dec=a=>{const v=a.n/a.d;return String(+v.toFixed(4))};
+ const fsd=a=>a.d===1?String(a.n):fs(a)+' = '+dec(a);
+ // polynomial: Map monomialKey -> Fraction ; key like "x2y1" or "" for constant
+ const mk=o=>Object.keys(o).sort().filter(v=>o[v]>0).map(v=>v+o[v]).join(''),pk=k=>{const o={};k.replace(/([a-z])(\d+)/g,(_,v,e)=>{o[v]=+e});return o};
+ const P=(m)=>m||new Map(),cst=f=>new Map(isz(f)?[]:[['',f]]),vr=v=>new Map([[v+'1',F(1)]]);
+ const padd=(a,b)=>{const r=new Map(a);for(const[k,v]of b){const s=r.has(k)?add(r.get(k),v):v;isz(s)?r.delete(k):r.set(k,s)}return r};
+ const pneg=a=>new Map([...a].map(([k,v])=>[k,neg(v)]));
+ const pmul=(a,b)=>{let r=new Map();for(const[k1,v1]of a)for(const[k2,v2]of b){const o1=pk(k1),o2=pk(k2),o={...o1};for(const v in o2)o[v]=(o[v]||0)+o2[v];if(Object.values(o).some(e=>e>8))throw 0;r=padd(r,new Map([[mk(o),mul(v1,v2)]]))}return r};
+ const isC=a=>a.size===0||(a.size===1&&a.has(''));const cv=a=>a.size?a.get(''):F(0);
+ const ppow=(a,e)=>{if(e<0||e>(isC(a)?40:8))throw 0;let r=cst(F(1));for(let i=0;i<e;i++)r=pmul(r,a);return r};
+ const sqf=f=>{if(f.n<0)return null;const a=Math.round(Math.sqrt(f.n)),b=Math.round(Math.sqrt(f.d));return a*a===f.n&&b*b===f.d?F(a,b):null};
+ function parse(s){
+  const T=[];let i=0;
+  while(i<s.length){const c=s[i];
+   if(c===' '){i++;continue}
+   if(/[0-9.]/.test(c)){let j=i;while(j<s.length&&/[0-9.]/.test(s[j]))j++;const t=s.slice(i,j);if(!/^\d*\.?\d+$|^\d+\.?$/.test(t))throw 0;const[ip,fp='']=t.split('.');T.push({t:'n',v:F(+(ip+fp||'0'),Math.pow(10,fp.length))});i=j;continue}
+   if(/[a-z]/.test(c)){T.push({t:'v',v:c});i++;continue}
+   if('+-*/^()√'.includes(c)){T.push({t:c});i++;continue}
+   throw 0}
+  let p=0;const pk2=()=>T[p],nx=()=>T[p++];
+  const expr=()=>{let a=term();while(pk2()&&(pk2().t==='+'||pk2().t==='-')){const o=nx().t,b=term();a=o==='+'?padd(a,b):padd(a,pneg(b))}return a};
+  const term=()=>{let a=unary();for(;;){const t=pk2();if(!t)break;if(t.t==='*'){nx();a=pmul(a,unary())}else if(t.t==='/'){nx();const b=unary();if(!isC(b)||isz(cv(b)))throw 0;a=pmul(a,cst(dv(F(1),cv(b))))}else if(t.t==='v'||t.t==='('||t.t==='√'){a=pmul(a,power())}else break}return a};
+  const unary=()=>{const t=pk2();if(t&&t.t==='-'){nx();return pneg(unary())}if(t&&t.t==='+'){nx();return unary()}return power()};
+  const power=()=>{let b=atom();if(pk2()&&pk2().t==='^'){nx();let sg=1;if(pk2()&&pk2().t==='-'){nx();sg=-1}let e;if(pk2()&&pk2().t==='('){nx();const x=expr();if(!pk2()||nx().t!==')')throw 0;if(!isC(x))throw 0;e=cv(x)}else{const t=nx();if(!t||t.t!=='n')throw 0;e=t.v}if(e.d!==1)throw 0;e=e.n*sg;if(e<0){if(!isC(b)||isz(cv(b))||e<-40)throw 0;return cst(dv(F(1),cv(ppow(b,-e))))}b=ppow(b,e)}return b};
+  const atom=()=>{const t=nx();if(!t)throw 0;if(t.t==='n')return cst(t.v);if(t.t==='v')return vr(t.v);if(t.t==='√'){let x;if(pk2()&&pk2().t==='('){nx();x=expr();if(!pk2()||nx().t!==')')throw 0}else{const q=nx();if(!q||q.t!=='n')throw 0;x=cst(q.v)}if(!isC(x))throw 0;const r=sqf(cv(x));if(!r)throw 0;return cst(r)}if(t.t==='('){const x=expr();if(!pk2()||nx().t!==')')throw 0;return x}throw 0};
+  const r=expr();if(p!==T.length)throw 0;return r}
+ const vars=a=>{const s=new Set();for(const k of a.keys())Object.keys(pk(k)).forEach(v=>s.add(v));return s};
+ const deg=(a,v)=>{let d=0;for(const k of a.keys())d=Math.max(d,pk(k)[v]||0);return d};
+ const coef=(a,v,e)=>{let r=F(0);for(const[k,x]of a){const o=pk(k);if((o[v]||0)===e&&Object.keys(o).filter(q=>q!==v).length===0)r=add(r,x)}return r};
+ const show=(a,v)=>{ // univariate polynomial string, high to low
+  const d=deg(a,v),out=[];for(let e=d;e>=0;e--){const c=coef(a,v,e);if(isz(c))continue;const ab=c.n<0?neg(c):c,one=ab.n===1&&ab.d===1;let t=(one&&e>0?'':(ab.d===1?String(ab.n):'('+fs(ab)+')'))+(e>0?v+(e>1?'^'+e:''):'');out.push([c.n<0?'-':'+',t])}
+  if(!out.length)return '0';return out.map(([g,t],i)=>i===0?(g==='-'?'-':'')+t:' '+g+' '+t).join('')};
+ const clean=raw=>{
+  let s=String(raw||'').toLowerCase().trim();
+  s=s.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/٫/g,'.').replace(/[،]/g,',').replace(/[×·]/g,'*').replace(/÷/g,'/').replace(/[−–—]/g,'-').replace(/²/g,'^2').replace(/³/g,'^3').replace(/sqrt/g,'√').replace(/[؟?]/g,' ');
+  return s};
+ const solveLin=(a,v)=>{const A=coef(a,v,1),B=coef(a,v,0);return dv(neg(B),A)};
+ function solve(raw){
+  try{
+   let s=clean(raw);if(s.length>200)return null;
+   let mode='';
+   const m1=/^(?:derivative of|differentiate|d\/dx of|d\/dx|مشتقة|مشتقه|اشتق|جد مشتقة|أوجد مشتقة|اوجد مشتقة)\s*/.exec(s);if(m1){mode='d';s=s.slice(m1[0].length)}
+   const m2=/^(?:integral of|integrate|∫|تكامل|جد تكامل|أوجد تكامل|اوجد تكامل)\s*/.exec(s);if(m2){mode='i';s=s.slice(m2[0].length).replace(/\s*d[xyz]\s*$/,'')}
+   if(!mode){for(let n=0;n<3;n++){const r=s.replace(/^(?:solve|calculate|compute|evaluate|simplify|find|what is|what's|حل|احسب|أوجد|اوجد|جد|ما ناتج|ما هو ناتج|ناتج|المعادلة|المعادله|معادلة|معادله|المعادلتين|المعادلتان)(?:\s+(?:for|the equation|the equations|equation|equations))?\s*[:：]?\s+/,'');if(r===s)break;s=r}}
+   s=s.replace(/\s+(?:و|and)\s+/g,',').replace(/[.]+\s*$/,'').replace(/\s*=\s*$/,'').trim();
+   if(!s||!/^[0-9a-z+\-*\/^().=,; \n√]+$/.test(s))return null;
+   if(/[a-z]{2,}/.test(s.replace(/\s+/g,''))&&/[a-z][a-z]/.test(s))return null;
+   const parts=s.split(/[,;\n]/).map(x=>x.trim()).filter(Boolean);
+   if(parts.length>2)return null;
+   if(mode){ if(parts.length!==1||s.includes('='))return null;const e=parse(s),vs=[...vars(e)];if(vs.length!==1)return null;const v=vs[0];const d=deg(e,v);if(d>8)return null;for(const k of e.keys())if(/[a-z]\d+[a-z]/.test(k))return null;
+    let r=new Map();
+    for(let k=0;k<=d;k++){const c=coef(e,v,k);if(isz(c))continue;if(mode==='d'){if(k>0)r=padd(r,new Map([[mk(k-1?{[v]:k-1}:{}),mul(c,F(k))]]))}else r=padd(r,new Map([[mk({[v]:k+1}),dv(c,F(k+1))]]))}
+    const rs=show(r,v);
+    return mode==='d'?{direct:`f(${v}) = ${show(e,v)}\nf'(${v}) = ${rs}`,explained:`بنشتق كل حد لوحده: القوة بتنزل كمعامل وبننقص من الأس واحد (مثلاً x^n بتبقى n·x^(n-1))، والثابت مشتقته 0.\nالناتج: f'(${v}) = ${rs}`}
+     :{direct:`∫ (${show(e,v)}) d${v} = ${rs} + C`,explained:`بنكامل كل حد لوحده: بنزود الأس واحد ونقسم على الأس الجديد (x^n بتبقى x^(n+1)/(n+1))، وبنضيف ثابت التكامل C.\nالناتج: ${rs} + C`}};
+   // equations
+   if(parts.length===1&&!s.includes('=')){ // numeric expression only
+    const e=parse(s);if(!isC(e))return null;const r=cv(e);
+    return {direct:`${s.replace(/\*/g,'×').replace(/\//g,'÷')} = ${fsd(r)}`,explained:`بنحسب التعبير بترتيب العمليات (الأقواس، ثم القوى، ثم الضرب والقسمة، ثم الجمع والطرح).\nالناتج: ${fsd(r)}`}}
+   const eqs=parts.map(x=>{const sp=x.split('=');if(sp.length!==2||!sp[0].trim()||!sp[1].trim())throw 0;return padd(parse(sp[0]),pneg(parse(sp[1])))});
+   if(eqs.length===1){
+    const a=eqs[0],vs=[...vars(a)];
+    if(vs.length===0){const z=a.size===0,hv=/[a-z]/.test(s);return {direct:z?(hv?'المعادلة صحيحة لأي قيمة (حلول لا نهائية)':'العبارة صحيحة'):(hv?'مفيش حل':'العبارة غير صحيحة'),explained:z?'بعد التبسيط الطرفين متساويين.':'بعد التبسيط بيطلع تناقض، يعني مفيش قيمة تحقق المعادلة.'}}
+    if(vs.length!==1)return null;const v=vs[0],d=deg(a,v);
+    for(const k of a.keys())if(/[a-z]\d+[a-z]/.test(k))return null;
+    const ex=s.replace(/\*/g,'×');
+    if(d===0)return null;
+    if(d===1){const A=coef(a,v,1),B=coef(a,v,0),x=dv(neg(B),A);
+     return {direct:`${ex}\n${show(a,v)} = 0\n${v} = ${fsd(x)}`,explained:`بننقل كل الحدود في طرف واحد ونبسط: ${show(a,v)} = 0.\nبعدين بنفصل المجهول: ${v} = ${fs(neg(B))} ÷ ${fs(A)}.\nيعني ${v} = ${fsd(x)}`}}
+    if(d===2){const A=coef(a,v,2),B=coef(a,v,1),C=coef(a,v,0),D=sub(mul(B,B),mul(F(4),mul(A,C)));
+     const head=`${show(a,v)} = 0\na = ${fs(A)}, b = ${fs(B)}, c = ${fs(C)}\nΔ = b² - 4ac = ${fs(D)}`;
+     const exp=`بنحط المعادلة على الصورة a${v}² + b${v} + c = 0 ونحسب المميز Δ = b² - 4ac.`;
+     if(D.n<0)return {direct:head+'\nΔ < 0 ⇒ مفيش جذور حقيقية',explained:exp+'\nلأن Δ أقل من الصفر، المعادلة ملهاش حل في مجموعة الأعداد الحقيقية.'};
+     const A2=mul(F(2),A);
+     if(isz(D)){const x=dv(neg(B),A2);return {direct:head+`\nΔ = 0 ⇒ ${v} = -b/2a = ${fsd(x)}`,explained:exp+`\nلأن Δ = 0 فيه جذر واحد مكرر: ${v} = -b ÷ 2a = ${fsd(x)}`}}
+     const r=sqf(D);
+     if(r){const x1=dv(add(neg(B),r),A2),x2=dv(sub(neg(B),r),A2);return {direct:head+`\n√Δ = ${fs(r)}\n${v} = (-b ± √Δ)/2a\n${v}₁ = ${fsd(x1)}\n${v}₂ = ${fsd(x2)}`,explained:exp+`\nΔ أكبر من الصفر وجذرها ${fs(r)}، فيه حلين بالقانون ${v} = (-b ± √Δ) ÷ 2a:\n${v}₁ = ${fsd(x1)}\n${v}₂ = ${fsd(x2)}`}}
+     const sd=Math.sqrt(D.n/D.d),x1=(-B.n/B.d+sd)/(2*A.n/A.d),x2=(-B.n/B.d-sd)/(2*A.n/A.d),f4=z=>String(+z.toFixed(4));
+     return {direct:head+`\n${v} = (${fs(neg(B))} ± √(${fs(D)})) / ${fs(A2)}\n${v}₁ ≈ ${f4(x1)}\n${v}₂ ≈ ${f4(x2)}`,explained:exp+`\nΔ أكبر من الصفر لكن مش مربع كامل، فالحلين بيطلعوا بجذر:\n${v} = (${fs(neg(B))} ± √(${fs(D)})) ÷ ${fs(A2)}\nتقريباً ${v}₁ ≈ ${f4(x1)} و ${v}₂ ≈ ${f4(x2)}`}}
+    return null}
+   // two equations
+   const vs=new Set();eqs.forEach(e=>vars(e).forEach(x=>vs.add(x)));const vv=[...vs].sort();
+   if(eqs.length!==2||vv.length!==2)return null;const[x,y]=vv;
+   for(const e of eqs)for(const k of e.keys()){const o=pk(k),dg=Object.values(o).reduce((a,b)=>a+b,0);if(dg>1)return null}
+   const a1=coef(eqs[0],x,1),b1=coef(eqs[0],y,1),c1=neg(coef(eqs[0],x,0)),a2=coef(eqs[1],x,1),b2=coef(eqs[1],y,1),c2=neg(coef(eqs[1],x,0));
+   const L=e=>show(e,x).includes(y)?'':'';
+   const cf=(c,v)=>(c.n===1&&c.d===1?'':c.n===-1&&c.d===1?'-':c.d===1?String(c.n):'('+fs(c)+')')+v;const lin=(a,b,c)=>`${cf(a,x)} ${b.n<0?'-':'+'} ${cf(b.n<0?neg(b):b,y)} = ${fs(c)}`;
+   const Dt=sub(mul(a1,b2),mul(a2,b1));
+   if(isz(Dt)){return {direct:'المعادلتين مفيش لهم حل وحيد (يا إما مفيش حل يا إما حلول لا نهائية)',explained:'محدد المعاملات = 0، يعني الخطين متوازيين أو منطبقين.'}}
+   const X=dv(sub(mul(c1,b2),mul(c2,b1)),Dt),Y=dv(sub(mul(a1,c2),mul(a2,c1)),Dt);
+   return {direct:`${lin(a1,b1,c1)}\n${lin(a2,b2,c2)}\n${x} = ${fsd(X)}\n${y} = ${fsd(Y)}`,explained:`بنحل المعادلتين مع بعض بالحذف: بنضرب المعادلتين في أرقام مناسبة عشان نخلي معامل ${y} (أو ${x}) متساوي ونطرحهم، فنطلع بمعادلة فيها مجهول واحد.\nبعدين بنعوض بقيمته في أي معادلة تانية.\nالحل: ${x} = ${fsd(X)} و ${y} = ${fsd(Y)}\nوتتأكد بالتعويض في المعادلتين.`};
+  }catch(e){return null}
+ }
+ return {solve};
+})();
+const localSolve=t=>{try{return LM.solve(t)}catch(e){return null}};
 async function solveC(text,image,opt){opt=opt||{};
+ if(!opt.detect&&!image&&text){const L=localSolve(text);if(L){const t=st();t.loc=(t.loc||0)+1;return {direct:L.direct,explained:L.explained,cached:true,local:true}}}
  if(opt.detect){const o=await solve(text,image,opt);if(o.error){st().fail++;if(o.error==='ai_busy')st().quota++}else st().det++;return o}
  const k=cacheKey(text,image,opt.pick);
  if(k&&db.cache&&db.cache[k]){const c=db.cache[k];c.h=(c.h||0)+1;st().hits++;return {direct:c.d,explained:c.e,cached:true}}
@@ -52,7 +154,7 @@ async function solve(text,image,opt){
  if(!text&&!m) return {error:'empty'};
  const img=m?[{inline_data:{mime_type:m[1],data:m[2]}}]:[];
  const call=(parts,gc,ms,mdl)=>fetch((process.env.GEMINI_BASE||'https://generativelanguage.googleapis.com')+'/v1beta/models/'+(mdl||GEMINI_MODEL)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_API_KEY},body:JSON.stringify({contents:[{parts}],generationConfig:gc}),signal:AbortSignal.timeout(ms||85000)});
- const MODELS=[GEMINI_MODEL,...(process.env.GEMINI_FALLBACKS||'gemini-3.8-flash,gemini-2.5-flash-lite').split(',').map(x=>x.trim()).filter(x=>x&&x!==GEMINI_MODEL)];
+ const MODELS=[GEMINI_MODEL,...(process.env.GEMINI_FALLBACKS||'gemini-3.8-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(',').map(x=>x.trim()).filter(x=>x&&x!==GEMINI_MODEL)];
  const run=async(parts,tok,think,ms)=>{const one=async(mdl)=>{try{let r=await call(parts,think?{thinkingConfig:{thinkingLevel:think},maxOutputTokens:tok}:{maxOutputTokens:tok},ms,mdl);if(r.status===400)r=await call(parts,{maxOutputTokens:tok},ms,mdl);const j=await r.json().catch(()=>({}));return {r,j}}catch(e){return {r:{ok:false,status:0},j:{}}}};
   let x,first=null;for(const m of MODELS){x=await one(m);if(x.r.ok)return x;if(!first)first=x;if(![429,503,500,404].includes(x.r.status))break}x=first;
   if(!x.r.ok&&(x.r.status===429||x.r.status===503)){await new Promise(z=>setTimeout(z,3000));x=await one(MODELS[0])}return x};
@@ -69,6 +171,7 @@ async function solve(text,image,opt){
  if(text) parts.push({text:'Problem text: '+text});
  parts.push(...img);
  let {r,j}=await run(parts,8000,'low');
+ if(!r.ok&&!m&&process.env.GROQ_API_KEY&&[429,503,500,0].includes(r.status)){try{const gr=await fetch((process.env.GROQ_BASE||'https://api.groq.com')+'/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.GROQ_API_KEY},body:JSON.stringify({model:process.env.GROQ_MODEL||'openai/gpt-oss-120b',messages:[{role:'user',content:parts.map(x=>x.text).filter(Boolean).join('\n\n')}],max_tokens:6000,reasoning_effort:'low'}),signal:AbortSignal.timeout(60000)});const gj=await gr.json().catch(()=>({}));const gt=gj.choices&&gj.choices[0]&&gj.choices[0].message&&gj.choices[0].message.content;if(gr.ok&&gt){const g2=/DIRECT:\s*([\s\S]*?)\s*EXPLAINED:\s*([\s\S]*)/i.exec(gt);st().groq=(st().groq||0)+1;return g2?{direct:g2[1].trim(),explained:g2[2].trim()}:{direct:'',explained:gt.trim()}}}catch(e){}}
  let fin=(j.candidates||[])[0]?.finishReason;
  if(r.ok&&fin==='MAX_TOKENS'){const x=await run(parts,16000,'low');if(x.r.ok){r=x.r;j=x.j;fin=(j.candidates||[])[0]?.finishReason}}
  if(!r.ok) return aiErr(r,j);
