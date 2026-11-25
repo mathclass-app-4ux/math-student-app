@@ -116,7 +116,7 @@ http.createServer(async(q,r)=>{
   const f=path.basename(p);const okNews=db.posts.some(x=>x.kind!=='top'&&x.images.includes('/uploads/'+f));
   if(!okNews){r.writeHead(403);return r.end('no')}
   const fp=path.join(UP,f);return fs.readFile(fp,(e,d)=>{if(e){r.writeHead(404);return r.end('not found')}r.writeHead(200,{'Content-Type':types[path.extname(fp)]||'application/octet-stream'});r.end(d)});}
- const f=path.join(__dirname,{'/':'index.html','/admin':'admin.html','/manage':'manage.html','/style.css':'style.css','/sw.js':'sw.js'}[p]||'404');
+ const f=path.join(__dirname,{'/':'index.html','/admin':'manage.html','/manage':'manage.html','/style.css':'style.css','/sw.js':'sw.js'}[p]||'404');
  fs.readFile(f,(e,d)=>{if(e){r.writeHead(404);return r.end('not found')}r.writeHead(200,{'Content-Type':types[path.extname(f)]||'application/octet-stream'});r.end(d)});
  }catch(e){console.error(e);if(!r.headersSent)json(r,500,{error:'server'})}
 }).listen(PORT,()=>console.log('http://localhost:'+PORT));
