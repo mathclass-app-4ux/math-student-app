@@ -7,6 +7,7 @@ fs.mkdirSync(UP,{recursive:true});
 let db={codes:[],posts:[],questions:[],sessions:{},logs:[],solves:{},settings:{secure:true}};
 if(fs.existsSync(DB)) db=Object.assign(db,JSON.parse(fs.readFileSync(DB)));
 db.mg=db.mg||{groups:[],att:{},pay:{}};
+const SIGN={};
 const save=()=>fs.writeFileSync(DB,JSON.stringify(db));
 const LINKS={whatsapp:'https://wa.me/201142104969',facebook:[
  {name:'Page 1',url:'https://www.facebook.com/share/1J3ZLst87q/'},
@@ -41,17 +42,29 @@ http.createServer(async(q,r)=>{
  const sess=db.sessions[tok],isAdmin=sess&&sess.role==='admin',isStudent=sess&&sess.role==='student';
  try{
  if(p.startsWith('/api/')){
+  if(p==='/api/status') return json(r,200,{open:!!db.settings.open,closed:!!db.settings.closed});
+  if(p==='/api/signup'&&q.method==='POST'){
+   if(db.settings.closed) return json(r,423,{error:'closed'});
+   if(!db.settings.open) return json(r,403,{error:'signup off'});
+   const ip=String(q.headers['x-forwarded-for']||q.socket.remoteAddress||'').split(',')[0].trim(),hr=Math.floor(Date.now()/3600000);
+   SIGN[ip+hr]=(SIGN[ip+hr]||0)+1; if(SIGN[ip+hr]>10) return json(r,429,{error:'too many'});
+   const c={code:newCode(),label:'تسجيل مفتوح',maxDevices:0,single:true,devices:[],disabled:false,created:Date.now()};db.codes.push(c);
+   const t=id()+id();db.sessions[t]={role:'student',code:c.code};save();return json(r,200,{token:t,role:'student',registered:false,code:c.code});}
+  if(p==='/api/logout'&&q.method==='POST'){delete db.sessions[tok];save();return json(r,200,{ok:1});}
   if(p==='/api/login'&&q.method==='POST'){
    const b=await body(q);
    if(b.role==='admin'){ if(b.username!==ADMIN_USER||b.password!==ADMIN_PASSWORD) return json(r,401,{error:'bad credentials'});
      const t=id()+id();db.sessions[t]={role:'admin'};save();return json(r,200,{token:t,role:'admin'});}
    const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());
    if(!c||c.disabled) return json(r,401,{error:'invalid code'});
+   if(db.settings.closed) return json(r,423,{error:'closed'});
+   if(c.single&&Object.values(db.sessions).some(x=>x.role==='student'&&x.code===c.code)) return json(r,403,{error:'code already logged in'});
    if(c.maxDevices&&!c.devices.includes(b.device)){ if(c.devices.length>=c.maxDevices) return json(r,403,{error:'code already used on another device'}); c.devices.push(b.device);}
    const t=id()+id();db.sessions[t]={role:'student',code:c.code};save();return json(r,200,{token:t,role:'student',registered:!!c.student});}
   if(!sess) return json(r,401,{error:'login required'});
   const me=isStudent?db.codes.find(x=>x.code===sess.code):null;
   if(isStudent&&(!me||me.disabled)) return json(r,401,{error:'code disabled'});
+  if(isStudent&&db.settings.closed) return json(r,423,{error:'closed'});
   if(p==='/api/me') return json(r,200,{role:sess.role,registered:isStudent?!!me.student:true,name:me&&me.student?me.student.name:'',phone:me&&me.student?me.student.phone:''});
   if(p==='/api/register'&&isStudent){const b=await body(q);const name=String(b.name||'').trim().slice(0,60),phone=String(b.phone||'').replace(/[^0-9+]/g,'').slice(0,20);
    if(!name||phone.length<8) return json(r,400,{error:'name and phone required'});
@@ -60,7 +73,7 @@ http.createServer(async(q,r)=>{
   if(p==='/api/content'&&q.method==='GET'){
    if(isStudent&&!me.student) return json(r,403,{error:'register first'});
    const strip=x=>({id:x.id,title:x.title,text:x.text,date:x.date,kind:x.kind,count:x.images.length,likes:(x.likes||[]).length,liked:!!(me&&(x.likes||[]).includes(me.code)),likers:(x.likes||[]).map(c=>{const d=db.codes.find(y=>y.code===c);return d&&d.student?d.student.name:null}).filter(Boolean)});
-   return json(r,200,{adminName:db.mg.adminName||'',links:LINKS,posts:db.posts.filter(x=>x.kind!=='top').map(x=>({...strip(x),images:x.images})),top:db.posts.filter(x=>x.kind==='top').map(strip),questions:db.questions,appOnly:true,isApp:isApp(q),secure:db.settings.secure!==false});}
+   return json(r,200,{adminName:db.mg.adminName||'',links:LINKS,posts:db.posts.filter(x=>x.kind!=='top').map(x=>({...strip(x),images:x.images})),top:db.posts.filter(x=>x.kind==='top').map(strip),questions:db.questions,appOnly:true,isApp:isApp(q),secure:db.settings.secure!==false,open:!!db.settings.open,closed:!!db.settings.closed});}
   if(p==='/api/top-image'&&q.method==='GET'){
    const post=db.posts.find(x=>x.id===u.searchParams.get('id')),i=+u.searchParams.get('i')||0;
    if(!post||!post.images[i]) return json(r,404,{error:'not found'});
@@ -86,7 +99,8 @@ http.createServer(async(q,r)=>{
   if(p==='/api/codes/toggle'){const b=await body(q);const c=db.codes.find(x=>x.code===b.code);if(c){c.disabled=!c.disabled;save()}return json(r,200,{ok:1});}
   if(p==='/api/codes/delete'){const b=await body(q);db.codes=db.codes.filter(x=>x.code!==b.code);save();return json(r,200,{ok:1});}
   if(p==='/api/student-photo'){const c=db.codes.find(x=>x.code===u.searchParams.get('code'));if(!c||!c.student||!c.student.photo)return json(r,404,{error:'none'});const f=path.join(UP,path.basename(c.student.photo));r.writeHead(200,{'Content-Type':types[path.extname(f)]||'image/jpeg'});return fs.createReadStream(f).pipe(r);}
-  if(p==='/api/settings'&&q.method==='POST'){const b=await body(q);db.settings.secure=!!b.secure;save();return json(r,200,{ok:1});}
+  if(p==='/api/settings'&&q.method==='POST'){const b=await body(q);for(const k of ['secure','open','closed'])if(k in b)db.settings[k]=!!b[k];save();return json(r,200,{ok:1});}
+  if(p==='/api/codes/endsession'){const b=await body(q);for(const k of Object.keys(db.sessions))if(db.sessions[k].code===b.code)delete db.sessions[k];save();return json(r,200,{ok:1});}
   if(p==='/api/logs') return json(r,200,db.logs);
   if(p==='/api/posts'&&q.method==='POST'){const b=await body(q);const post={id:id(),kind:b.kind==='top'?'top':'news',title:b.title||'',text:b.text||'',images:[],date:Date.now()};
    for(const im of b.images||[]){const f=saveImg(im);if(f)post.images.push(f.startsWith('/')?f:(post.kind==='top'?f:'/uploads/'+f))}
