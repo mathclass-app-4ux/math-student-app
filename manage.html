@@ -21,7 +21,7 @@ function navToast(m){let t=document.getElementById('navt');if(!t){t=document.cre
 function navPush(key,st){if(_rs){_rs=false;_k=key;return}if(_k===null){history.replaceState({root:1},'');history.pushState(st,'');_k=key;_first=st;return}if(key!==_k){history.pushState(st,'');_k=key}}
 window.addEventListener('popstate',e=>{const s=e.state;if(!s||s.root){if(_arm&&Date.now()-_arm<2500){_arm=0;history.back();return}_arm=Date.now();navToast('اضغط رجوع مرة تانية للخروج');if(_first){history.pushState(_first,'');_rs=true;_apply&&_apply(_first)}return}_arm=0;_rs=true;_apply&&_apply(s)});
 let AD={me:'',list:[]},SH={};
-async function loadAdm(){AD=await api('admins');SH=await api('admins/share');adC=await api('codes');if(adC.error){localStorage.removeItem('at');location='/';return}adD=await api('content');adL=await api('logs')}
+async function loadAdm(){AD=await api('admins');SH=await api('admins/share');adC=await api('codes');if(adC.error){localStorage.removeItem('at');location='/';return}adD=await api('content');adL=await api('logs');try{if(window.Android&&Android.setSecure)Android.setSecure(adD.secure!==false)}catch(e){}}
 async function reload(){await loadAdm();draw()}
 async function enter(v){V=v;if(['codes','pub','sec','qa','regs','adm'].includes(v)){app.innerHTML='<div class=card>جاري التحميل...</div>';await loadAdm()}draw();scrollTo(0,0)}
 const fd=t=>new Date(t).toLocaleString('en-GB');
