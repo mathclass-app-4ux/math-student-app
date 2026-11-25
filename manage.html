@@ -1,22 +1,49 @@
-<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>الحضور والمصروفات</title><link rel="stylesheet" href="style.css">
+<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mr:kzafey</title><link rel="stylesheet" href="style.css">
 <style>.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e2e8f0}.row b{flex:1}.bt{display:flex;gap:6px}.bt button{padding:8px 12px;margin:0;background:#e2e8f0;color:#1b2430}.bt button.p{background:#16a34a;color:#fff}.bt button.a{background:#dc2626;color:#fff}.bt button.wa{background:#25d366;color:#fff}
-.stat{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.stat span{background:#eef2ff;border-radius:10px;padding:6px 10px;font-weight:700}.tabs button{flex:1}select{font:inherit;padding:10px;border-radius:8px;border:1px solid #cbd5e1;width:100%;margin:4px 0}small{color:#64748b}</style></head><body>
-<header>📋 الحضور والمصروفات (المشرف فقط)</header><main id="app"></main>
+.stat{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.stat span{background:#eef2ff;border-radius:10px;padding:6px 10px;font-weight:700}.tabs button{flex:1}select{font:inherit;padding:10px;border-radius:8px;border:1px solid #cbd5e1;width:100%;margin:4px 0}small{color:#64748b}
+main{padding-bottom:84px}.hero{background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;border-radius:24px;padding:22px;margin:6px 0}.hero h2{margin:0 0 10px;font-size:26px}.hero p{margin:0 0 14px;opacity:.95}.hero span{display:inline-block;background:#ffffff33;border-radius:12px;padding:10px 14px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tile{background:#fff;border-radius:20px;padding:18px;text-align:center;box-shadow:0 1px 4px #0001}.tile small{display:block;margin-top:4px}.sess{border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin:8px 0}
+.bn{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e2e8f0;display:flex;z-index:9}.bn button{flex:1;background:none;color:#475569;border-radius:0;margin:0;padding:8px 2px;font-size:12px;border:0}.bn button span{display:block;font-size:20px}.bn button.on{color:#0f766e;font-weight:700}
+</style></head><body>
+<header>Mr:kzafey</header><main id="app"></main>
 <script>
 const $=s=>document.querySelector(s),app=$('#app'),token=localStorage.at;let M=null,G=null,T='att',DT=new Date().toISOString().slice(0,10),MO=DT.slice(0,7);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function api(b){const r=await fetch('/api/mg',{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined});if(r.status==401||r.status==403){location='/admin';throw 0}const j=await r.json();if(!r.ok)throw new Error(j.error);return j}
 async function act(b){try{M=await api(b);draw()}catch(e){alert('حصل خطأ: '+(e&&e.message))}}
 const grp=()=>M.groups.find(g=>g.id===G);
+const DAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+let V='home',SQ='';
+const NAV=[['home','🏠','الرئيسية'],['groups','👥','المجموعات'],['att','✅','الحضور'],['fees','💰','المصروف'],['search','🔍','بحث'],['set','⚙️','الإعدادات']];
+const ld=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const tm12=t=>t;
 async function init(){if(!token){location='/admin';return}M=await api();G=(M.groups[0]||{}).id;draw()}
-function draw(){const g=grp();if(!M.groups.some(x=>x.id===G))G=(M.groups[0]||{}).id;
- let h=`<div class=card><a href=/admin><button class=sec>← رجوع للوحة</button></a></div><div class=card><h3>المجموعات</h3>`;
- h+=M.groups.length?`<select onchange="G=this.value;draw()">${M.groups.map(x=>`<option value="${x.id}" ${x.id===G?'selected':''}>${esc(x.name)} (${x.students.length} طالب)</option>`).join('')}</select>`:'<p>لا توجد مجموعات. اعمل أول مجموعة.</p>';
- h+=`<input id=gn placeholder="اسم مجموعة جديدة"><input id=gf type=number placeholder="المصروف الشهري (جنيه)"><button onclick="act({op:'addGroup',name:$('#gn').value,fee:$('#gf').value})">+ إضافة مجموعة</button></div>`;
- const c=grp();
- if(c){h+=`<div class=tabs><button class="${T=='att'?'on':''}" onclick="T='att';draw()">الحضور</button><button class="${T=='pay'?'on':''}" onclick="T='pay';draw()">المصروفات</button><button class="${T=='rep'?'on':''}" onclick="T='rep';draw()">تقرير</button><button class="${T=='stu'?'on':''}" onclick="T='stu';draw()">الطلاب</button></div>`;
-  h+={att:attV,pay:payV,rep:repV,stu:stuV}[T](c)}
- app.innerHTML=h}
+function go(v){V=v;if(v=='att'||v=='fees')DT=DT;draw();scrollTo(0,0)}
+function sessionsToday(){const wd=new Date().getDay(),o=[];M.groups.forEach(g=>(g.sched||[]).forEach(x=>{if(x.day==wd)o.push({g,x})}));return o.sort((a,b)=>a.x.time<b.x.time?-1:1)}
+function nextSession(){const now=new Date(),all=[];M.groups.forEach(g=>(g.sched||[]).forEach(x=>{const [hh,mm]=x.time.split(':');for(let k=0;k<8;k++){const d=new Date(now);d.setDate(d.getDate()+k);if(d.getDay()!=x.day)continue;d.setHours(+hh,+mm,0,0);if(d>now){all.push({g,x,d});break}}}));all.sort((a,b)=>a.d-b.d);return all[0]}
+function homeV(){const now=new Date(),td=ld(now);let stu=0,abs=0;M.groups.forEach(g=>{stu+=g.students.length;const A=M.att[g.id+'|'+td]||{};abs+=Object.values(A).filter(x=>x=='absent').length});
+ const st=sessionsToday(),nx=nextSession(),hr=now.getHours(),gr=hr<12?'صباح الخير':'مساء الخير';
+ const dt=now.toLocaleDateString('ar-EG-u-nu-latn',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+ const tile=(i,n,l)=>`<div class=tile><div style="font-size:30px">${i}</div><b class=num style="font-size:28px">${n}</b><small>${l}</small></div>`;
+ return `<div class=hero><h2>${gr} 👋</h2><p>${esc(dt)}</p><span>لوحة تحكم ذكية وشاملة</span></div><h3 style="margin:18px 4px 8px">مؤشرات اليوم</h3><div class=tiles>${tile('👥',M.groups.length,'المجموعات')}${tile('🎓',stu,'الطلاب')}${tile('📅',st.length,'حصص اليوم')}${tile('✖️',abs,'غياب اليوم')}</div>
+ <div class=card><h3>⭐ الحصة القادمة</h3>${nx?`<p style="font-size:18px">${esc(nx.g.name)} - ${DAYS[nx.x.day]} الساعة <span class=num>${nx.x.time}</span></p>`:'<p><small>لا توجد حصص. أضف مواعيد من تبويب المجموعات.</small></p>'}</div>
+ <div class=card><h3>📅 جدول اليوم</h3>${st.length?st.map(o=>`<div class=sess><b>${esc(o.g.name)}</b><br><small><span class=num>${o.x.time}</span> • <span class=num>${o.x.dur}</span> دقيقة</small></div>`).join(''):'<p><small>لا توجد حصص اليوم.</small></p>'}</div>`}
+function pick(){if(!M.groups.length)return '<div class=card><p>لا توجد مجموعات. أضف مجموعة من تبويب المجموعات.</p></div>';return `<div class=card><select onchange="G=this.value;draw()">${M.groups.map(x=>`<option value="${x.id}" ${x.id===G?'selected':''}>${esc(x.name)} (${x.students.length} طالب)</option>`).join('')}</select></div>`}
+function groupsV(){let h=`<div class=card><h3>مجموعة جديدة</h3><input id=gn placeholder="اسم المجموعة"><input id=gf type=number placeholder="المصروف الشهري (جنيه)"><button onclick="act({op:'addGroup',name:$('#gn').value,fee:$('#gf').value})">+ إضافة مجموعة</button></div>`;
+ h+=M.groups.map(g=>`<div class=card onclick="G='${g.id}';T='stu';go('grp')"><h3>${esc(g.name)}</h3><small>🎓 ${g.students.length} طالب • 💰 <span class=num>${+g.fee||0}</span> جنيه شهريا • 📅 ${(g.sched||[]).length} حصة أسبوعيا</small></div>`).join('');return h}
+function grpV(c){if(!c)return groupsV();let S=c.sched||[];
+ return `<div class=card><button class=sec onclick="go('groups')">← كل المجموعات</button><h3>${esc(c.name)}</h3>
+ <p><small>المصروف الشهري: <span class=num>${+c.fee||0}</span> جنيه</small> <button class=sec onclick="var v=prompt('اسم المجموعة؟','${esc(c.name).replace(/'/g,'')}');if(v)var f=prompt('المصروف الشهري بالجنيه؟',${+c.fee||0});if(v&&f!==null)act({op:'editGroup',gid:'${c.id}',name:v,fee:f})">تعديل</button></p></div>
+ <div class=card><h3>📅 مواعيد المجموعة</h3>${S.map(x=>`<div class=row><b>${DAYS[x.day]} <span class=num>${x.time}</span> • <span class=num>${x.dur}</span> دقيقة</b><div class=bt><button class=a onclick="act({op:'delSched',gid:'${c.id}',sid:'${x.id}'})">حذف</button></div></div>`).join('')||'<p><small>لا توجد مواعيد.</small></p>'}
+ <select id=sd>${DAYS.map((d,i)=>`<option value=${i}>${d}</option>`).join('')}</select><input id=st type=time value="16:00" style="direction:ltr"><input id=su type=number value=60 placeholder="المدة بالدقائق"><button onclick="act({op:'addSched',gid:'${c.id}',day:$('#sd').value,time:$('#st').value,dur:$('#su').value})">+ إضافة موعد</button></div>`+stuV(c)}
+function feesV(c){return pick()+(c?`<div class=tabs><button class="${T!='rep'?'on':''}" onclick="T='pay';draw()">المصروفات</button><button class="${T=='rep'?'on':''}" onclick="T='rep';draw()">تقرير ولي الأمر</button></div>`+(T=='rep'?repV(c):payV(c)):'')}
+function searchV(){const q=SQ.trim().toLowerCase(),qd=q.replace(/\D/g,'');let res=[];if(q)M.groups.forEach(g=>g.students.forEach(s=>{if(s.name.toLowerCase().includes(q)||(qd&&String(s.phone||'').includes(qd)))res.push({g,s})}));
+ return `<div class=card><input id=sq placeholder="ابحث بالاسم أو رقم الهاتف" value="${esc(SQ)}" oninput="SQ=this.value;clearTimeout(window.__t);window.__t=setTimeout(()=>{draw();const e=$('#sq');e.focus();e.setSelectionRange(e.value.length,e.value.length)},250)"></div>`+(q?(res.length?res.map(o=>`<div class=card onclick="G='${o.g.id}';T='stu';go('grp')"><b>${esc(o.s.name)}</b><br><small>${esc(o.g.name)} • <span class=num>${esc(o.s.phone||'')}</span></small></div>`).join(''):'<div class=card><p>لا توجد نتائج.</p></div>'):'<div class=card><p><small>اكتب اسم الطالب أو رقمه.</small></p></div>')}
+function setV(){return `<div class=card><h3>الإعدادات</h3><a href=/admin><button class=sec style="width:100%">← لوحة المشرف (الأكواد والنشر)</button></a></div><div class=card><p><small>البيانات هنا تجريبية على السيرفر المجاني وتتمسح عند أي تحديث.</small></p></div>`}
+function draw(){if(!M.groups.some(x=>x.id===G))G=(M.groups[0]||{}).id;const c=grp();
+ if(V=='att'&&T!='att')T='att';if(V=='fees'&&T!='rep'&&T!='pay')T='pay';
+ const body={home:homeV,groups:groupsV,grp:()=>grpV(c),att:()=>pick()+(c?attV(c):''),fees:()=>feesV(c),search:searchV,set:setV}[V]();
+ app.innerHTML=body+`<nav class=bn>${NAV.map(n=>`<button class="${(V==n[0]||(V=='grp'&&n[0]=='groups'))?'on':''}" onclick="go('${n[0]}')"><span>${n[1]}</span>${n[2]}</button>`).join('')}</nav>`}
 function attV(c){const k=c.id+'|'+DT,A=M.att[k]||{};let p=0,a=0;c.students.forEach(s=>{if(A[s.id]=='present')p++;if(A[s.id]=='absent')a++});
  return `<div class=card><h3>حضور ${esc(c.name)}</h3><label>التاريخ</label><input type=date value="${DT}" onchange="DT=this.value||DT;draw()" style="direction:ltr"><div class=stat><span>✅ ${p}</span><span>❌ ${a}</span><span>غير مسجل ${c.students.length-p-a}</span></div>
  <div class=bt style="margin-bottom:8px"><button class=p onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:'present'})">الكل حاضر</button><button class=a onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:'absent'})">الكل غائب</button><button onclick="act({op:'setAtt',gid:'${c.id}',date:'${DT}',sid:'*',status:''})">مسح الكل</button></div>`+
