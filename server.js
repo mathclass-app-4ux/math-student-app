@@ -60,7 +60,7 @@ http.createServer(async(q,r)=>{
   if(p==='/api/content'&&q.method==='GET'){
    if(isStudent&&!me.student) return json(r,403,{error:'register first'});
    const strip=x=>({id:x.id,title:x.title,text:x.text,date:x.date,kind:x.kind,count:x.images.length,likes:(x.likes||[]).length,liked:!!(me&&(x.likes||[]).includes(me.code)),likers:(x.likes||[]).map(c=>{const d=db.codes.find(y=>y.code===c);return d&&d.student?d.student.name:null}).filter(Boolean)});
-   return json(r,200,{links:LINKS,posts:db.posts.filter(x=>x.kind!=='top').map(x=>({...strip(x),images:x.images})),top:db.posts.filter(x=>x.kind==='top').map(strip),questions:db.questions,appOnly:true,isApp:isApp(q),secure:db.settings.secure!==false});}
+   return json(r,200,{adminName:db.mg.adminName||'',links:LINKS,posts:db.posts.filter(x=>x.kind!=='top').map(x=>({...strip(x),images:x.images})),top:db.posts.filter(x=>x.kind==='top').map(strip),questions:db.questions,appOnly:true,isApp:isApp(q),secure:db.settings.secure!==false});}
   if(p==='/api/top-image'&&q.method==='GET'){
    const post=db.posts.find(x=>x.id===u.searchParams.get('id')),i=+u.searchParams.get('i')||0;
    if(!post||!post.images[i]) return json(r,404,{error:'not found'});
@@ -77,6 +77,7 @@ http.createServer(async(q,r)=>{
    return json(r,out.error==='empty'?400:out.error?502:200,out);}
   if(p==='/api/security-event'&&isStudent&&q.method==='POST'){
    const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80)});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
+  if(p==='/api/my-grades'&&isStudent){let st=null,gn='';for(const g of db.mg.groups){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;break}}if(!st)return json(r,200,{linked:false,grades:[]});return json(r,200,{linked:true,name:st.name,group:gn,grades:(st.grades||[]).slice().sort((a,b)=>b.date-a.date)});}
   if(!isAdmin) return json(r,403,{error:'admin only'});
   if(p==='/api/codes'&&q.method==='GET') return json(r,200,db.codes.map(c=>({...c,student:c.student?{name:c.student.name,phone:c.student.phone,hasPhoto:!!c.student.photo}:null})));
   if(p==='/api/codes'&&q.method==='POST'){const b=await body(q);const n=Math.min(+b.count||1,200),out=[];
@@ -98,7 +99,8 @@ http.createServer(async(q,r)=>{
   if(p==='/api/mg'&&q.method==='GET') return json(r,200,db.mg);
   if(p==='/api/mg'&&q.method==='POST'){const b=await body(q),M=db.mg,S=x=>String(x||'').slice(0,80);const g=M.groups.find(x=>x.id===b.gid);
    const D=/^\d{4}-\d{2}-\d{2}$/,MO=/^\d{4}-\d{2}$/;
-   if(b.op==='addGroup'){if(!S(b.name))return json(r,400,{error:'name'});M.groups.push({id:id(),name:S(b.name),fee:Math.max(0,+b.fee||0),students:[]});}
+   if(b.op==='setName'){db.mg.adminName=String(b.name||'').trim().slice(0,40);}
+   else if(b.op==='addGroup'){if(!S(b.name))return json(r,400,{error:'name'});M.groups.push({id:id(),name:S(b.name),fee:Math.max(0,+b.fee||0),students:[]});}
    else if(!g) return json(r,404,{error:'group'});
    else if(b.op==='editGroup'){if(S(b.name))g.name=S(b.name);g.fee=Math.max(0,+b.fee||0);}
    else if(b.op==='delGroup'){M.groups=M.groups.filter(x=>x!==g);for(const k of Object.keys(M.att))if(k.startsWith(g.id+'|'))delete M.att[k];for(const k of Object.keys(M.pay))if(k.startsWith(g.id+'|'))delete M.pay[k];}
@@ -106,6 +108,11 @@ http.createServer(async(q,r)=>{
    else if(b.op==='delStudent'){g.students=g.students.filter(x=>x.id!==b.sid);}
    else if(b.op==='editStudent'){const st=g.students.find(x=>x.id===b.sid);if(!st||!S(b.name))return json(r,400,{error:'student'});st.name=S(b.name);st.phone=String(b.phone||'').replace(/[^0-9]/g,'').slice(0,20);if(b.photo){const f=saveImg(b.photo);if(f)st.photo=f}else if(b.rmPhoto)st.photo=null;}
    else if(b.op==='reorder'){const o=Array.isArray(b.order)?b.order:[];const mp=new Map(g.students.map(x=>[x.id,x]));const ns=[];for(const i of o)if(mp.has(i)){ns.push(mp.get(i));mp.delete(i)}for(const x of mp.values())ns.push(x);g.students=ns;}
+   else if(b.op==='linkCode'){const st=g.students.find(x=>x.id===b.sid);const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());if(!st)return json(r,400,{error:'student'});if(!c)return json(r,400,{error:'الكود غير موجود'});if(db.mg.groups.some(x=>x.students.some(y=>y.code===c.code&&y!==st)))return json(r,400,{error:'الكود مربوط بطالب تاني'});st.code=c.code;}
+   else if(b.op==='newCode'){const st=g.students.find(x=>x.id===b.sid);if(!st)return json(r,400,{error:'student'});if(st.code)return json(r,400,{error:'مربوط بكود بالفعل'});const c={code:newCode(),label:st.name,maxDevices:1,devices:[],disabled:false,created:Date.now(),student:{name:st.name,phone:st.phone,photo:st.photo||null,date:Date.now()}};db.codes.push(c);st.code=c.code;}
+   else if(b.op==='unlink'){const st=g.students.find(x=>x.id===b.sid);if(st)delete st.code;}
+   else if(b.op==='addGrade'){const st=g.students.find(x=>x.id===b.sid);const t=S(b.title);if(!st||!t)return json(r,400,{error:'title'});const sc=String(b.score||'').slice(0,10),mx=String(b.max||'').slice(0,10);st.grades=st.grades||[];st.grades.push({id:id(),title:t,score:sc,max:mx,date:Date.now()});}
+   else if(b.op==='delGrade'){const st=g.students.find(x=>x.id===b.sid);if(st)st.grades=(st.grades||[]).filter(x=>x.id!==b.gr);}
    else if(b.op==='fromCodes'){const have=new Set(M.groups.flatMap(x=>x.students.map(y=>y.code).filter(Boolean)));for(const c of db.codes)if(c.student&&!have.has(c.code))g.students.push({id:id(),name:c.student.name,phone:c.student.phone,code:c.code,photo:c.student.photo||null});}
    else if(b.op==='addSched'){const dy=+b.day,tm=String(b.time||''),du=Math.min(600,Math.max(10,+b.dur||60));if(!(dy>=0&&dy<=6)||!/^\d{2}:\d{2}$/.test(tm))return json(r,400,{error:'sched'});g.sched=g.sched||[];g.sched.push({id:id(),day:dy,time:tm,dur:du});}
    else if(b.op==='delSched'){g.sched=(g.sched||[]).filter(x=>x.id!==b.sid);}
