@@ -57,7 +57,7 @@ const _G={alpha:'α',beta:'β',gamma:'γ',delta:'δ',theta:'θ',lambda:'λ',mu:'
 const _SU={'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','n':'ⁿ','+':'⁺','-':'⁻'},_SB={'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉'};
 function mth(t){t=String(t==null?'':t);if(!/[\\$^_{}*]/.test(t))return t;
  t=t.replace(/\$\$?/g,'').replace(/\\[\(\)\[\]]/g,'').replace(/\\(left|right|displaystyle|,|;|!|quad|qquad)/g,' ');
- for(let k=0;k<4;k++){t=t.replace(/\\text\{([^{}]*)\}/g,'$1').replace(/\\(?:mathrm|mathbf|textbf|operatorname)\{([^{}]*)\}/g,'$1').replace(/\\d?frac\{([^{}]*)\}\{([^{}]*)\}/g,(m,a,b)=>(/^[\w.]+$/.test(a)?a:'('+a+')')+'/'+(/^[\w.]+$/.test(b)?b:'('+b+')')).replace(/\\sqrt\[(\d+)\]\{([^{}]*)\}/g,(m,n,a)=>(_SU[n]||'')+'√('+a+')').replace(/\\sqrt\{([^{}]*)\}/g,(m,a)=>/^[\w.]+$/.test(a)?'√'+a:'√('+a+')')}
+ for(let k=0;k<4;k++){t=t.replace(/\\text\{([^{}]*)\}/g,'$1').replace(/\\(?:mathrm|mathbf|textbf|operatorname)\{([^{}]*)\}/g,'$1').replace(/\\d?frac\{([^{}]*)\}\{([^{}]*)\}/g,(m,a,b)=>(/^(\d+(\.\d+)?|[A-Za-z])$/.test(a)?a:'('+a+')')+'/'+(/^(\d+(\.\d+)?|[A-Za-z])$/.test(b)?b:'('+b+')')).replace(/\\sqrt\[(\d+)\]\{([^{}]*)\}/g,(m,n,a)=>(_SU[n]||'')+'√('+a+')').replace(/\\sqrt\{([^{}]*)\}/g,(m,a)=>/^[\w.]+$/.test(a)?'√'+a:'√('+a+')')}
  t=t.replace(/\\([A-Za-z]+)/g,(m,n)=>n in _G?_G[n]:m).replace(/\^\{?\\?(?:circ|°)\}?/g,'°');
  t=t.replace(/\^\{([^{}]*)\}/g,(m,a)=>[...a].every(c=>c in _SU)?[...a].map(c=>_SU[c]).join(''):'^('+a+')').replace(/\^([0-9n])/g,(m,a)=>_SU[a]).replace(/_\{([0-9]+)\}/g,(m,a)=>[...a].map(c=>_SB[c]).join('')).replace(/_([0-9])/g,(m,a)=>_SB[a]);
  return t.replace(/[{}]/g,'').replace(/\*\*/g,'')}
