@@ -1,0 +1,8 @@
+*{box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f3f5f9;color:#1b2430;direction:rtl}
+header{background:#1d4ed8;color:#fff;padding:14px 16px;font-size:20px;font-weight:700}
+main{max-width:760px;margin:auto;padding:12px}.card{background:#fff;border-radius:12px;padding:14px;margin:12px 0;box-shadow:0 1px 4px #0001}
+input,textarea,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #cbd5e1;width:100%;margin:4px 0}
+button{background:#1d4ed8;color:#fff;border:0;cursor:pointer;width:auto;padding:10px 16px}button.sec{background:#64748b}button.red{background:#dc2626}
+img{max-width:100%;border-radius:8px;margin:6px 0}.links a{display:inline-block;margin:4px;padding:8px 14px;border-radius:20px;background:#e0e7ff;color:#1d4ed8;text-decoration:none}
+.sol{background:#ecfdf5;border-radius:8px;padding:8px;margin:6px 0;white-space:pre-wrap}.ex{background:#fffbeb;border-radius:8px;padding:8px;margin:6px 0;white-space:pre-wrap}
+.num{direction:ltr;unicode-bidi:plaintext;white-space:pre-wrap}table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #e2e8f0;text-align:right}
