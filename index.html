@@ -1,18 +1,44 @@
-<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Math Student App</title><link rel="stylesheet" href="style.css"></head><body>
+<!doctype html><html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Math App</title><link rel="stylesheet" href="style.css"></head><body>
 <header>تطبيق الرياضيات</header><main id="app"></main>
 <script>
-const $=s=>document.querySelector(s),app=$('#app');let token=localStorage.t;
+const $=s=>document.querySelector(s),app=$('#app');let token=localStorage.t,tab='solve',D=null,ME=null;
 const dev=localStorage.d||(localStorage.d=Math.random().toString(36).slice(2));
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function login(msg){app.innerHTML=`<div class=card><h3>ادخل الكود</h3><input id=c placeholder="CODE" style="direction:ltr;text-transform:uppercase"><button onclick=go()>دخول</button><p style=color:#dc2626>${msg||''}</p></div>`}
-async function go(){const r=await fetch('/api/login',{method:'POST',body:JSON.stringify({code:$('#c').value,device:dev})});const j=await r.json();if(!r.ok)return login(j.error=='invalid code'?'الكود غير صحيح':j.error=='code already used on another device'?'الكود مستخدم على جهاز آخر':j.error);token=localStorage.t=j.token;load()}
-async function load(){let d,off=false;try{const r=await fetch('/api/content',{headers:{Authorization:'Bearer '+token}});if(!r.ok){localStorage.removeItem('t');localStorage.removeItem('cache');return login()}d=await r.json();localStorage.cache=JSON.stringify(d)}catch(e){if(!localStorage.cache)return login('لا يوجد اتصال بالإنترنت');d=JSON.parse(localStorage.cache);off=true}
- 
- let h=(off?'<div class=card style="background:#fef3c7">لا يوجد إنترنت. بتشوف آخر محتوى محفوظ.</div>':'')+`<div class="card links"><b>تواصل مع الأستاذ</b><br><a href="${d.links.whatsapp}">WhatsApp</a>${d.links.facebook.map(l=>`<a href="${l.url}">Facebook: ${l.name}</a>`).join('')}<br><span class=num>${d.links.phone}</span></div>`;
- h+='<h3>الأوائل والإعلانات</h3>'+(d.posts.map(p=>`<div class=card><b>${esc(p.title)}</b><p>${esc(p.text)}</p>${p.images.map(i=>`<img src="${i}">`).join('')}</div>`).join('')||'<p>لا يوجد محتوى بعد</p>');
- h+='<h3>الأسئلة والحلول</h3>'+(d.questions.map((x,i)=>`<div class=card><small>${esc(x.subject)}</small><div class=num><b>${esc(x.question)}</b></div><button class=sec onclick="t('d${i}')">الحل المباشر</button> <button class=sec onclick="t('e${i}')">الحل بالشرح</button><div id=d${i} class="sol num" hidden>${esc(x.direct)}</div><div id=e${i} class=ex hidden>${esc(x.explained)}</div></div>`).join('')||'<p>لا توجد أسئلة بعد</p>');
- app.innerHTML=h}
+const H=()=>({Authorization:'Bearer '+token,'Content-Type':'application/json'});
+const rd=f=>new Promise(r=>{const x=new FileReader;x.onload=()=>r(x.result);x.readAsDataURL(f)});
+// shrink big photos before upload
+async function small(file,max=1400){const url=await rd(file);return new Promise(r=>{const i=new Image;i.onload=()=>{const k=Math.min(1,max/Math.max(i.width,i.height));const c=document.createElement('canvas');c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.85))};i.onerror=()=>r(null);i.src=url})}
+function chooser(){app.innerHTML=`<div class=card><h3>تسجيل الدخول</h3><button class=big onclick="stuLogin()">دخول كطالب</button><button class="big sec" onclick="admLogin()">دخول كمشرف</button></div>`}
+function stuLogin(m){app.innerHTML=`<div class=card><h3>دخول كطالب</h3><input id=c placeholder="CODE" style="direction:ltr;text-transform:uppercase"><button onclick=goStu()>دخول</button> <button class=sec onclick=chooser()>رجوع</button><p style=color:#dc2626>${m||''}</p></div>`}
+function admLogin(m){app.innerHTML=`<div class=card><h3>دخول كمشرف</h3><input id=u placeholder="Username" style="direction:ltr" autocapitalize=off><input id=p type=password placeholder="Password" style="direction:ltr"><button onclick=goAdm()>دخول</button> <button class=sec onclick=chooser()>رجوع</button><p style=color:#dc2626>${m||''}</p></div>`}
+async function goStu(){const r=await fetch('/api/login',{method:'POST',body:JSON.stringify({role:'student',code:$('#c').value,device:dev})});const j=await r.json();if(!r.ok)return stuLogin(j.error=='invalid code'?'الكود غير صحيح':j.error=='code already used on another device'?'الكود مستخدم على جهاز آخر':j.error);token=localStorage.t=j.token;start()}
+async function goAdm(){const r=await fetch('/api/login',{method:'POST',body:JSON.stringify({role:'admin',username:$('#u').value,password:$('#p').value})});const j=await r.json();if(!r.ok)return admLogin('بيانات غير صحيحة');localStorage.at=j.token;location='/admin'}
+async function start(){try{const r=await fetch('/api/me',{headers:H()});if(!r.ok){localStorage.removeItem('t');return chooser()}ME=await r.json();localStorage.me=JSON.stringify(ME)}catch(e){if(!localStorage.cache)return chooser();ME=JSON.parse(localStorage.me||'{}');return load()}
+ if(ME.role!=='student'){localStorage.removeItem('t');return chooser()}
+ ME.registered?load():reg()}
+function reg(m){app.innerHTML=`<div class=card><h3>بياناتك</h3><input id=n placeholder="الاسم"><input id=ph type=tel placeholder="رقم الموبايل" style="direction:ltr"><label>صورتك (اختياري)</label><input id=pi type=file accept="image/*"><button onclick=doReg()>حفظ</button><p style=color:#dc2626>${m||''}</p></div>`}
+async function doReg(){const f=$('#pi').files[0];const photo=f?await small(f,600):null;const r=await fetch('/api/register',{method:'POST',headers:H(),body:JSON.stringify({name:$('#n').value,phone:$('#ph').value,photo})});if(!r.ok)return reg('اكتب الاسم ورقم موبايل صحيح');start()}
+async function load(){let off=false;try{const r=await fetch('/api/content',{headers:H()});if(!r.ok){localStorage.removeItem('t');return chooser()}D=await r.json();localStorage.cache=JSON.stringify(D)}catch(e){D=JSON.parse(localStorage.cache||'null');off=true;if(!D)return chooser()}
+ render(off)}
+const TABS=[['solve','حل مسألة'],['top','الأوائل'],['news','إعلانات'],['q','أسئلة وحلول'],['t','تواصل']];
+function render(off){let h=(off?'<div class=warn>لا يوجد إنترنت. بتشوف آخر محتوى محفوظ.</div>':'')+'<div class=tabs>'+TABS.map(x=>`<button class="${tab==x[0]?'on':''}" onclick="tab='${x[0]}';render(${!!off})">${x[1]}</button>`).join('')+'</div><div id=pane></div>';app.innerHTML=h;pane(off)}
+function pane(off){const p=$('#pane');
+ if(tab=='solve'){p.innerHTML=`<div class=card><h3>اكتب المسألة أو صورها</h3><textarea id=st rows=3 placeholder="اكتب المسألة هنا (اختياري لو هتصورها)" style="direction:ltr"></textarea><input id=si type=file accept="image/*"><button onclick=solve()>${off?'محتاج إنترنت':'احسب الحل'}</button><div id=sr></div><div class=warn>الحل بيتعمل بالذكاء الاصطناعي، راجعه مع المدرس لو مش متأكد.</div></div>`}
+ if(tab=='top'){if(!D.top.length)p.innerHTML='<p>لا يوجد محتوى بعد</p>';else if(!window.MathApp&&!/MathAppAPK/.test(navigator.userAgent))p.innerHTML='<div class=card>صور الأوائل بتتفتح من تطبيق الأندرويد بس.</div>';else{p.innerHTML=D.top.map(x=>`<div class="card nosave"><b>${esc(x.title)}</b><p>${esc(x.text)}</p><div id="tp${x.id}"></div></div>`).join('');D.top.forEach(x=>{for(let i=0;i<x.count;i++)topImg(x.id,i)})}}
+ if(tab=='news')p.innerHTML=D.posts.map(x=>`<div class=card><b>${esc(x.title)}</b><p>${esc(x.text)}</p>${x.images.map(i=>`<img src="${i}">`).join('')}</div>`).join('')||'<p>لا يوجد إعلانات</p>';
+ if(tab=='q')p.innerHTML=D.questions.map((x,i)=>`<div class=card><small>${esc(x.subject)}</small><div class=num><b>${esc(x.question)}</b></div><button class=sec onclick="t('d${i}')">الحل المباشر</button> <button class=sec onclick="t('e${i}')">الحل بالشرح</button><div id=d${i} class="sol num" hidden>${esc(x.direct)}</div><div id=e${i} class=ex hidden>${esc(x.explained)}</div></div>`).join('')||'<p>لا توجد أسئلة بعد</p>';
+ if(tab=='t')p.innerHTML=`<div class="card links"><b>تواصل مع الأستاذ</b><br><a href="${D.links.whatsapp}">WhatsApp</a>${D.links.facebook.map(l=>`<a href="${l.url}">Facebook: ${l.name}</a>`).join('')}<br><span class=num>${D.links.phone}</span></div><button class=sec onclick="localStorage.clear();location.reload()">تسجيل الخروج</button>`}
 function t(i){const e=document.getElementById(i);e.hidden=!e.hidden}
+async function topImg(id,i){try{const r=await fetch('/api/top-image?id='+id+'&i='+i,{headers:H()});if(!r.ok)return;const b=await r.blob(),im=new Image;im.onload=()=>{const c=document.createElement('canvas');c.width=im.width;c.height=im.height;const x=c.getContext('2d');x.drawImage(im,0,0);const s=Math.max(18,im.width/22);x.font='bold '+s+'px sans-serif';x.fillStyle='rgba(255,255,255,.35)';x.strokeStyle='rgba(0,0,0,.25)';x.textAlign='center';const w=(ME&&ME.name||'')+' '+(ME&&ME.phone||'');x.save();x.rotate(-.35);for(let yy=-im.width;yy<im.height*1.5;yy+=s*3)for(let xx=-im.width;xx<im.width*1.5;xx+=s*w.length*.6+s)x.fillText(w,xx,yy);x.restore();c.oncontextmenu=e=>e.preventDefault();c.className='nosave';document.getElementById('tp'+id).appendChild(c);URL.revokeObjectURL(im.src)};im.src=URL.createObjectURL(b)}catch(e){}}
+async function solve(){const o=$('#sr');o.innerHTML='جاري الحل...';const f=$('#si').files[0];const image=f?await small(f,1600):null;
+ try{const r=await fetch('/api/solve',{method:'POST',headers:H(),body:JSON.stringify({text:$('#st').value,image})});const j=await r.json();
+ if(r.status==429)return o.innerHTML='<div class=warn>وصلت للحد اليومي للحلول. جرب بكرة.</div>';
+ if(j.error=='ai_not_configured')return o.innerHTML='<div class=warn>الحل الذكي لسه مش متفعل.</div>';
+ if(j.error)return o.innerHTML='<div class=warn>حصلت مشكلة، حاول تاني.</div>';
+ o.innerHTML=`<button class=sec onclick="t('ad')">الحل المباشر</button> <button class=sec onclick="t('ae')">الحل بالشرح</button><div id=ad class="sol num">${esc(j.direct)}</div><div id=ae class=ex hidden>${esc(j.explained)}</div>`}catch(e){o.innerHTML='<div class=warn>لا يوجد اتصال.</div>'}}
+// called by the Android app when a screenshot attempt is detected
+window.onScreenshot=function(){if(!token)return;fetch('/api/security-event',{method:'POST',headers:H(),body:JSON.stringify({type:'screenshot',where:tab})}).catch(()=>{})};
+document.addEventListener('contextmenu',e=>{if(e.target.tagName=='CANVAS'||e.target.tagName=='IMG')e.preventDefault()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
-token?load():login();
+token?start():chooser();
 </script></body></html>
