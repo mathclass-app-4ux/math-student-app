@@ -11,10 +11,11 @@ main{padding-bottom:84px}.hero{background:linear-gradient(135deg,#7c3aed,#ec4899
 <script>
 const $=s=>document.querySelector(s),app=$('#app');let token=localStorage.at;let M=null,G=null,T='att',DT=new Date().toISOString().slice(0,10),MO=DT.slice(0,7);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function mgApi(b){const r=await fetch('/api/mg',{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined});if(r.status==401||r.status==403){localStorage.removeItem('at');location='/';throw 0}const j=await r.json();if(!r.ok)throw new Error(j.error);return j}
+async function mgApi(b){const r=await fetch('/api/mg',{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined});if(r.status==401||r.status==403){localStorage.removeItem('at');location='/';throw 0}const j=await r.json();if(b){if(j&&j.saveFailed)toast('⚠️ '+j.error,true);else if(r.headers.get('X-Saved'))toast('تم الحفظ ✓')}if(!r.ok)throw new Error(j.error);return j}
 async function act(b){try{M=await mgApi(b);draw()}catch(e){alert(e&&e.message&&e.message.length<80?e.message:'حصل خطأ')}}
 const grp=()=>M.groups.find(g=>g.id===G);
-const api=(p,b)=>fetch('/api/'+p,{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
+function toast(t,bad){let e=document.getElementById('svt');if(!e){e=document.createElement('div');e.id='svt';e.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;padding:10px 18px;border-radius:20px;color:#fff;font-weight:700;font-size:14px;box-shadow:0 4px 14px #0004;transition:opacity .3s';document.body.appendChild(e)}e.style.background=bad?'#b91c1c':'#16a34a';e.textContent=t;e.style.opacity=1;clearTimeout(e._t);e._t=setTimeout(()=>e.style.opacity=0,bad?4500:1600)}
+const api=(p,b)=>fetch('/api/'+p,{method:b?'POST':'GET',headers:{Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined}).then(async r=>{const j=await r.json();if(b){if(j&&j.saveFailed)toast('⚠️ '+j.error,true);else if(r.headers.get('X-Saved'))toast('تم الحفظ ✓')}return j});
 let AIS=null,adC=[],adD={top:[],posts:[],questions:[],secure:true},adL=[];
 let _k=null,_arm=0,_rs=false,_first=null,_apply=null;
 function navToast(m){let t=document.getElementById('navt');if(!t){t=document.createElement('div');t.id='navt';t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1b2430;color:#fff;padding:10px 18px;border-radius:20px;z-index:99;font-size:14px';document.body.appendChild(t)}t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2200)}
