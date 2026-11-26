@@ -350,6 +350,28 @@ const srv=http.createServer(async(q,r)=>{
    const c={code:newCode(),label:'تسجيل مفتوح',maxDevices:0,single:true,gdev:String(b.device||'').slice(0,40),devices:[],disabled:false,created:Date.now()};db.codes.push(c);
    const t=id()+id();db.sessions[t]={role:'student',code:c.code,device:String(b.device||'')};save();return json(r,200,{token:t,role:'student',registered:false,code:c.code});}
   if(p==='/api/logout'&&q.method==='POST'){delete db.sessions[tok];save();return json(r,200,{ok:1});}
+  if(p==='/api/import-once'&&process.env.IMPORT_TOKEN){
+   const tk=String(u.searchParams.get('k')||''),T=process.env.IMPORT_TOKEN;
+   if(tk.length!==T.length||!require('crypto').timingSafeEqual(Buffer.from(tk),Buffer.from(T)))return json(r,404,{error:'not found'});
+   const admins=[...new Set([...ENVADM.map(a=>String(a[0]).toLowerCase()),...(db.admins||[]).map(a=>String(a.user).toLowerCase()),...Object.keys(db.ws||{})])];
+   if(q.method==='GET')return json(r,200,{admins:admins.length,done:!!db.importDone,ws:Object.fromEntries(admins.map(a=>[a,{to:wsId(a),groups:((db.ws[wsId(a)]||{}).groups||[]).length,students:((db.ws[wsId(a)]||{}).groups||[]).reduce((n,g)=>n+(g.students||[]).length,0)}]))});
+   if(q.method==='POST'){
+    if(db.importDone)return json(r,409,{error:'done'});
+    const b=await body(q);const to=wsId(String(b.to||'').toLowerCase());
+    if(!admins.includes(String(b.to||'').toLowerCase())||!b.ws||!Array.isArray(b.ws.groups))return json(r,400,{error:'bad'});
+    const M=WS(String(b.to).toLowerCase());const before=JSON.parse(JSON.stringify(M));
+    if(b.wipe){M.groups=[];M.att={};M.pay={}}const have=new Set();for(const g of M.groups)have.add(g.id);
+    let ng=0,ns=0,na=0,np=0,nc=0,nph=0;const gm={};
+    for(const g of b.ws.groups){if(have.has(g.id))continue;const G={id:g.id,name:String(g.name||'').slice(0,80),fee:Math.max(0,+g.fee||0),students:[],exams:[],sched:[]};
+     for(const s of g.students||[]){const st={id:s.id,name:String(s.name||'').slice(0,80),phone:String(s.phone||'').replace(/[^0-9]/g,'').slice(0,20),photo:null};if(s.photoData){const f=saveImg(s.photoData);if(f){st.photo=f;nph++}}G.students.push(st);ns++}
+     for(const x of g.sched||[]){G.sched.push({id:x.id,day:+x.day,time:String(x.time),dur:+x.dur||60});nc++}
+     M.groups.push(G);ng++}
+    for(const k of Object.keys(b.ws.att||{})){if(!M.att[k]){M.att[k]=b.ws.att[k];na+=Object.keys(b.ws.att[k]).length}}
+    for(const k of Object.keys(b.ws.pay||{})){if(!M.pay[k]){M.pay[k]=b.ws.pay[k];np+=Object.keys(b.ws.pay[k]).length}}
+    db.importDone=Date.now();save();
+    const ok=FB.on?await FB.sync():true;
+    return json(r,200,{ok,groups:ng,students:ns,att:na,pay:np,sched:nc,photos:nph,before});}
+  }
   if(p==='/api/login'&&q.method==='POST'){
    const b=await body(q);
    if(b.role==='admin'){ const un=String(b.username||'').trim().toLowerCase().slice(0,60);let who=null;const ip=rlIp(q),WIN=15*60e3;
