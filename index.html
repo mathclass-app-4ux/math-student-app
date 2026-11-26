@@ -93,12 +93,12 @@ function vis(){if(tab!='top')return[];try{const h=innerHeight,o=[];document.quer
 window.onScreenshot=function(){if(!token)return;try{const b=document.createElement('div');b.style.cssText='position:fixed;top:12px;left:12px;right:12px;z-index:10000;background:#b91c1c;color:#fff;padding:12px;border-radius:12px;text-align:center;font-weight:700';b.textContent='تم تسجيل محاولة تصوير الشاشة باسمك';document.body.appendChild(b);setTimeout(()=>b.remove(),4000)}catch(e){}fetch('/api/security-event',{method:'POST',headers:H(),body:JSON.stringify({type:'screenshot',where:tab,posts:vis()})}).catch(()=>{})};
 document.addEventListener('contextmenu',e=>{if(e.target.tagName=='CANVAS'||e.target.tagName=='IMG')e.preventDefault()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
-(async()=>{if(!token&&localStorage.at){try{const r=await fetch('/api/me',{headers:{Authorization:'Bearer '+localStorage.at}});if(r.ok){const j=await r.json();if(j.role==='admin'){location.replace('/admin');return}}else if(r.status==401||r.status==403)localStorage.removeItem('at')}catch(e){}}token?start():chooser()})();
+(async()=>{if(!token&&localStorage.at){try{const r=await fetch('/api/me',{headers:{Authorization:'Bearer '+localStorage.at}});if(r.ok){const j=await r.json();if(j.role==='admin'){try{await (window.__spWait||0)}catch(e){}location.replace('/admin');return}}else if(r.status==401||r.status==403)localStorage.removeItem('at')}catch(e){}}token?start():chooser()})();
 </script><script>(function(){try{
 var W=innerWidth,Hh=innerHeight,o=document.createElement('div');o.id='splash';o.style.cssText='position:fixed;inset:0;z-index:99998;background:#000;transition:opacity .3s;touch-action:manipulation';
 var cv=document.createElement('canvas');cv.width=W;cv.height=Hh;cv.style.cssText='width:100%;height:100%;display:block';o.appendChild(cv);document.body.appendChild(o);
 var x=cv.getContext('2d'),done=false,T0=0,raf=0,TXT='القذافي',FONT='Cairo,"Noto Naskh Arabic",Tahoma,Arial,sans-serif',TOT=5000,FORM=3300;
-function kill(){if(done)return;done=true;cancelAnimationFrame(raf);o.style.opacity=0;setTimeout(function(){o.remove()},400)}
+var _r;window.__spWait=new Promise(function(r){_r=r});function kill(){if(done)return;done=true;cancelAnimationFrame(raf);o.style.opacity=0;setTimeout(function(){o.remove();_r()},400)}
 var started=false;function tap(){if(started&&T0&&performance.now()-T0>FORM)kill()}
 o.addEventListener('click',tap);o.addEventListener('touchstart',tap,{passive:true});
 var fs=Math.min(W*0.34,Hh*0.22);var m=document.createElement('canvas');m.width=W;m.height=Math.ceil(fs*1.8);var mx=m.getContext('2d');
@@ -138,5 +138,5 @@ function loop(ts){if(done)return;if(!T0){T0=ts;started=true}var t=ts-T0;draw(t);
 window.__sp={draw:draw,stop:function(){done=true;cancelAnimationFrame(raf)},o:o};
 setTimeout(kill,15000);
 raf=requestAnimationFrame(loop)
-}catch(e){var s=document.getElementById('splash');if(s)s.remove()}})();
+}catch(e){var s=document.getElementById('splash');if(s)s.remove();try{_r()}catch(e2){window.__spWait=0}}})();
 </script></body></html>
