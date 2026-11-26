@@ -359,7 +359,14 @@ const srv=http.createServer(async(q,r)=>{
   if(p==='/api/me') return json(r,200,{role:sess.role,code:isStudent?me.code:'',registered:isStudent?!!me.student:true,name:me&&me.student?me.student.name:'',phone:me&&me.student?me.student.phone:''});
   if(p==='/api/register'&&isStudent){const b=await body(q);const name=String(b.name||'').trim().slice(0,60),phone=String(b.phone||'').replace(/[^0-9+]/g,'').slice(0,20);
    if(!name||phone.length<8) return json(r,400,{error:'name and phone required'});
-   const photo=b.photo?saveImg(b.photo):null;me.student={name,phone,photo,date:Date.now()};save();return json(r,200,{ok:1});}
+   const photo=b.photo?saveImg(b.photo):null;
+   const nm=x=>String(x||'').replace(/\D/g,'').slice(-10);
+   const old=(me.single&&!me.student)?db.codes.find(x=>x!==me&&x.single&&x.student&&!x.disabled&&nm(x.student.phone)&&nm(x.student.phone)===nm(phone)):null;
+   if(old){ // same phone registered before (e.g. app data was cleared): give back the existing code, never a second one
+    for(const k of Object.keys(db.sessions))if(db.sessions[k].role==='student'&&(db.sessions[k].code===old.code||db.sessions[k].code===me.code))delete db.sessions[k];
+    db.codes=db.codes.filter(x=>x!==me);old.gdev=me.gdev||old.gdev;old.student.name=name;if(photo)old.student.photo=photo;old.restored=Date.now();
+    const t2=id()+id();db.sessions[t2]={role:'student',code:old.code,device:String(sess.device||'')};save();return json(r,200,{ok:1,restored:true,token:t2,code:old.code});}
+   me.student={name,phone,photo,date:Date.now()};save();return json(r,200,{ok:1});}
   if(p==='/api/like'&&q.method==='POST'&&isStudent){const b=await body(q);const po=db.posts.find(x=>x.id===b.id&&x.kind==='top');if(!po)return json(r,404,{error:'none'});po.likes=po.likes||[];const k=po.likes.indexOf(me.code);if(k>=0)po.likes.splice(k,1);else po.likes.push(me.code);save();return json(r,200,{liked:k<0,likes:po.likes.length,likers:po.likes.map(c=>{const d=db.codes.find(y=>y.code===c);return d&&d.student?d.student.name:null}).filter(Boolean)});}
   if(p==='/api/content'&&q.method==='GET'){
    if(isStudent&&!me.student) return json(r,403,{error:'register first'});
