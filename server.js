@@ -472,6 +472,8 @@ const srv=http.createServer(async(q,r)=>{
    const D=/^\d{4}-\d{2}-\d{2}$/,MO=/^\d{4}-\d{2}$/;
    if(b.op==='setName'){M.adminName=String(b.name||'').trim().slice(0,40);}
    else if(b.op==='addGroup'){if(!S(b.name))return json(r,400,{error:'name'});M.groups.push({id:id(),name:S(b.name),fee:Math.max(0,+b.fee||0),students:[]});}
+   else if(b.op==='reorderGroups'){const o=Array.isArray(b.order)?b.order:[];const mp=new Map(M.groups.map(x=>[x.id,x]));const ng=[];for(const i of o)if(mp.has(i)){ng.push(mp.get(i));mp.delete(i)}for(const x of mp.values())ng.push(x);M.groups=ng;}
+   else if(b.op==='sortGroups'){const nz=x=>String(x||'').replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).trim(),cl=new Intl.Collator('en',{numeric:true,sensitivity:'base'});M.groups.sort((p1,p2)=>cl.compare(nz(p1.name),nz(p2.name)));}
    else if(!g) return json(r,404,{error:'group'});
    else if(b.op==='editGroup'){if(S(b.name))g.name=S(b.name);g.fee=Math.max(0,+b.fee||0);}
    else if(b.op==='delGroup'){M.groups=M.groups.filter(x=>x!==g);for(const k of Object.keys(M.att))if(k.startsWith(g.id+'|'))delete M.att[k];for(const k of Object.keys(M.pay))if(k.startsWith(g.id+'|'))delete M.pay[k];}
