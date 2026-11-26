@@ -333,7 +333,8 @@ const srv=http.createServer(async(q,r)=>{
    if(db.settings.closed) return json(r,423,{error:'closed'});
    if(!db.settings.open) return json(r,403,{error:'signup off'});
    const dv=String(b.device||'').slice(0,40);
-   if(dv){const prev=db.codes.find(x=>x.single&&x.gdev===dv&&!x.disabled);if(prev){db.codes.length;Object.entries(db.sessions).filter(([k,x])=>x.role==='student'&&x.code===prev.code).forEach(([k])=>delete db.sessions[k]);const t0=id()+id();db.sessions[t0]={role:'student',code:prev.code,device:dv};save();return json(r,200,{token:t0,role:'student',registered:!!prev.student,code:prev.code,again:true});}}
+   const lg0=String(b.legacy||'').slice(0,40);
+   if(dv){const prev=db.codes.find(x=>x.single&&(x.gdev===dv||(lg0&&x.gdev===lg0))&&!x.disabled);if(prev){prev.gdev=dv;db.codes.length;Object.entries(db.sessions).filter(([k,x])=>x.role==='student'&&x.code===prev.code).forEach(([k])=>delete db.sessions[k]);const t0=id()+id();db.sessions[t0]={role:'student',code:prev.code,device:dv};save();return json(r,200,{token:t0,role:'student',registered:!!prev.student,code:prev.code,again:true});}}
    const ip=String(q.headers['x-forwarded-for']||q.socket.remoteAddress||'').split(',')[0].trim(),hr=Math.floor(Date.now()/3600000);
    SIGN[ip+hr]=(SIGN[ip+hr]||0)+1; if(SIGN[ip+hr]>10) return json(r,429,{error:'too many'});
    const c={code:newCode(),label:'تسجيل مفتوح',maxDevices:0,single:true,gdev:String(b.device||'').slice(0,40),devices:[],disabled:false,created:Date.now()};db.codes.push(c);
@@ -349,6 +350,7 @@ const srv=http.createServer(async(q,r)=>{
    const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());
    if(!c||c.disabled) return json(r,401,{error:'invalid code'});
    if(db.settings.closed) return json(r,423,{error:'closed'});
+   {const lg=String(b.legacy||'').slice(0,40),nw=String(b.device||'').slice(0,40);if(lg&&nw&&lg!==nw){c.devices=[...new Set((c.devices||[]).map(d=>d===lg?nw:d))];if(c.gdev===lg)c.gdev=nw;for(const k of Object.keys(db.sessions)){const x=db.sessions[k];if(x.role==='student'&&x.code===c.code&&x.device===lg)x.device=nw}}}
    if(c.single){const act=Object.entries(db.sessions).filter(([k,x])=>x.role==='student'&&x.code===c.code);if(act.some(([k,x])=>!x.device||x.device!==b.device)) return json(r,403,{error:'code already logged in'});act.forEach(([k])=>delete db.sessions[k]);}
    if(c.maxDevices&&!c.devices.includes(b.device)){ if(c.devices.length>=c.maxDevices) return json(r,403,{error:'code already used on another device'}); c.devices.push(b.device);}
    const t=id()+id();db.sessions[t]={role:'student',code:c.code,device:b.device||''};save();return json(r,200,{token:t,role:'student',registered:!!c.student});}
@@ -412,6 +414,7 @@ const srv=http.createServer(async(q,r)=>{
   if(p==='/api/codes'&&q.method==='POST'){const b=await body(q);const n=Math.min(+b.count||1,200),out=[];
    for(let i=0;i<n;i++){const c={code:newCode(),label:b.label||'',maxDevices:+b.maxDevices||1,devices:[],disabled:false,created:Date.now()};db.codes.push(c);out.push(c)}
    save();return json(r,200,out);}
+  if(p==='/api/codes/maxdev'){const b=await body(q);const c=db.codes.find(x=>x.code===b.code);if(!c)return json(r,404,{error:'code'});if(b.reset)c.devices=[];else{const n=Math.max(1,Math.min(20,Math.floor(+b.max||1)));c.maxDevices=n;if(c.single&&n>1){c.single=false;if(!(c.devices||[]).length&&c.gdev)c.devices=[c.gdev]}}save();return json(r,200,{ok:1,maxDevices:c.maxDevices,devices:c.devices.length});}
   if(p==='/api/codes/toggle'){const b=await body(q);const c=db.codes.find(x=>x.code===b.code);if(c){c.disabled=!c.disabled;save()}return json(r,200,{ok:1});}
   if(p==='/api/codes/delete'){const b=await body(q);db.codes=db.codes.filter(x=>x.code!==b.code);save();return json(r,200,{ok:1});}
   if(p==='/api/student-photo'){const c=db.codes.find(x=>x.code===u.searchParams.get('code'));if(!c||!c.student||!c.student.photo)return json(r,404,{error:'none'});const f=path.join(UP,path.basename(c.student.photo));r.writeHead(200,{'Content-Type':types[path.extname(f)]||'image/jpeg'});return fs.createReadStream(f).pipe(r);}
