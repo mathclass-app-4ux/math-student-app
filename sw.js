@@ -1,4 +1,4 @@
-const V='v27';
+const V='v28';
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(['/','/style.css'])));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(clients.claim()));
 self.addEventListener('fetch',e=>{
