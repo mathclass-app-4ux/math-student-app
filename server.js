@@ -251,11 +251,59 @@ async function solve(text,image,opt){
  if(fin==='MAX_TOKENS') out.truncated=true;
  return out;
 }
+const XL=(()=>{
+const T=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;T[n]=c>>>0}
+const crc=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=T[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+function zip(files){const parts=[],cd=[];let off=0;
+ for(const [name,data] of files){const nb=Buffer.from(name),d=Buffer.from(data),c=crc(d);
+  const h=Buffer.alloc(30);h.writeUInt32LE(0x04034b50,0);h.writeUInt16LE(20,4);h.writeUInt16LE(0x0800,6);h.writeUInt16LE(0,8);h.writeUInt16LE(0,10);h.writeUInt16LE(0x21,12);h.writeUInt32LE(c,14);h.writeUInt32LE(d.length,18);h.writeUInt32LE(d.length,22);h.writeUInt16LE(nb.length,26);h.writeUInt16LE(0,28);
+  parts.push(h,nb,d);
+  const e=Buffer.alloc(46);e.writeUInt32LE(0x02014b50,0);e.writeUInt16LE(20,4);e.writeUInt16LE(20,6);e.writeUInt16LE(0x0800,8);e.writeUInt16LE(0,10);e.writeUInt16LE(0,12);e.writeUInt16LE(0x21,14);e.writeUInt32LE(c,16);e.writeUInt32LE(d.length,20);e.writeUInt32LE(d.length,24);e.writeUInt16LE(nb.length,28);e.writeUInt32LE(off,42);
+  cd.push(e,nb);off+=30+nb.length+d.length}
+ const cb=Buffer.concat(cd),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50,0);end.writeUInt16LE(files.length,8);end.writeUInt16LE(files.length,10);end.writeUInt32LE(cb.length,12);end.writeUInt32LE(off,16);
+ return Buffer.concat([...parts,cb,end])}
+const esc=s=>String(s==null?'':s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const col=i=>{let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s};
+function sheet(rows,widths){
+ let x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>'+widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')+'</cols><sheetData>';
+ rows.forEach((r,ri)=>{x+=`<row r="${ri+1}">`+r.map((v,ci)=>{const ref=col(ci)+(ri+1),st=ri==0?' s="1"':'';if(typeof v==='number'&&isFinite(v))return `<c r="${ref}"${st}><v>${v}</v></c>`;return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`}).join('')+'</row>'});
+ return x+'</sheetData></worksheet>'}
+function build(sheets){ // sheets:[{name,rows,widths}]
+ const files=[['[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')+'</Types>'],
+ ['_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+ ['xl/workbook.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+sheets.map((s,i)=>`<sheet name="${esc(s.name).slice(0,31)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')+'</sheets></workbook>'],
+ ['xl/_rels/workbook.xml.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')+`<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+ ['xl/styles.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF7C3AED"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>']];
+ sheets.forEach((s,i)=>files.push([`xl/worksheets/sheet${i+1}.xml`,sheet(s.rows,s.widths)]));
+ return zip(files)}
+return {build}})();
+const fdate=t=>{try{return new Date(t).toISOString().slice(0,10)}catch(e){return ''}};
+function exportSheets(M,codes){
+ const DAYS=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+ const gs=M.groups||[],att=M.att||{},pay=M.pay||{};
+ const rG=[['المجموعة','المصروف الشهري','عدد الطلاب','المواعيد']],rS=[['المجموعة','الاسم','الموبايل','الكود','عدد الدرجات']],rP=[['المجموعة','الطالب','الموبايل','الشهر','الحالة','تاريخ الدفع']],rA=[['المجموعة','الطالب','الموبايل','التاريخ','الحالة']],rD=[['المجموعة','الطالب','الموبايل','الاختبار','الدرجة','من','التاريخ']],rC=[['الكود','الاسم','الموبايل','الحالة','تاريخ الإنشاء']];
+ for(const g of gs){
+  rG.push([g.name,g.fee||0,(g.students||[]).length,(g.sched||[]).map(s=>DAYS[s.day]+' '+s.time).join(' | ')]);
+  const months=[...new Set(Object.keys(pay).filter(k=>k.startsWith(g.id+'|')).map(k=>k.slice(g.id.length+1)))].sort();
+  const dates=Object.keys(att).filter(k=>k.startsWith(g.id+'|')).map(k=>k.slice(g.id.length+1)).sort();
+  for(const s of g.students||[]){
+   rS.push([g.name,s.name,s.phone||'',s.code||'',(s.grades||[]).length]);
+   for(const m of months){const d=(pay[g.id+'|'+m]||{})[s.id];rP.push([g.name,s.name,s.phone||'',m,d?'دفع':'لم يدفع',d&&d!==''?String(d):''])}
+   for(const d of dates){const st=(att[g.id+'|'+d]||{})[s.id];if(st)rA.push([g.name,s.name,s.phone||'',d,st==='present'?'حضر':'غاب'])}
+   for(const gr of s.grades||[])rD.push([g.name,s.name,s.phone||'',gr.title,gr.score,gr.max,fdate(gr.date)])
+  }}
+ for(const c of codes||[])rC.push([c.code,(c.student&&c.student.name)||c.label||'',(c.student&&c.student.phone)||'',c.disabled?'موقوف':'شغال',fdate(c.created)]);
+ return [{name:'المجموعات',rows:rG,widths:[24,16,12,40]},{name:'الطلاب',rows:rS,widths:[22,26,16,14,12]},{name:'الدفع',rows:rP,widths:[22,26,16,12,12,14]},{name:'الحضور',rows:rA,widths:[22,26,16,14,10]},{name:'الدرجات',rows:rD,widths:[22,26,16,24,10,10,14]},{name:'الأكواد',rows:rC,widths:[14,26,16,12,14]}]}
+
 const srv=http.createServer(async(q,r)=>{
- const u=new URL(q.url,'http://x'),p=u.pathname,tok=(q.headers.authorization||'').replace('Bearer ','');
+ const u=new URL(q.url,'http://x'),p=u.pathname,tok=(q.headers.authorization||'').replace('Bearer ','')||(p==='/api/export'?(u.searchParams.get('t')||''):'');
  const sess=db.sessions[tok],isAdmin=sess&&sess.role==='admin',isStudent=sess&&sess.role==='student';
  if(isAdmin&&q.method==='POST'&&p.startsWith('/api/'))r.wt=true;
  try{
+ if(p==='/api/export'){if(!isAdmin){r.writeHead(401);return r.end('login required')}
+  const M=WS(uOf(sess)),mine=new Set(M.groups.flatMap(g=>g.students.map(s=>s.code).filter(Boolean))),day=new Date().toISOString().slice(0,10);
+  if(u.searchParams.get('fmt')==='json'){r.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="backup-'+day+'.json"','Cache-Control':'no-store'});return r.end(JSON.stringify({exported:Date.now(),workspace:M,codes:db.codes.filter(c=>mine.has(c.code))}))}
+  const buf=XL.build(exportSheets(M,db.codes.filter(c=>mine.has(c.code))));r.writeHead(200,{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="backup-'+day+'.xlsx"','Cache-Control':'no-store'});return r.end(buf)}
  if(p.startsWith('/api/')){
   if(p==='/api/solver'){
    const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type,X-App-Key,X-Device','Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Max-Age':'86400'};
