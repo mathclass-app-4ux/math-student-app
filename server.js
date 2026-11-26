@@ -298,9 +298,16 @@ function exportSheets(M,codes){
  for(const c of codes||[])rC.push([c.code,(c.student&&c.student.name)||c.label||'',(c.student&&c.student.phone)||'',c.disabled?'موقوف':'شغال',fdate(c.created)]);
  return [{name:'المجموعات',rows:rG,widths:[24,16,12,40]},{name:'الطلاب',rows:rS,widths:[22,26,16,14,12]},{name:'الدفع',rows:rP,widths:[22,26,16,12,12,14]},{name:'الحضور',rows:rA,widths:[22,26,16,14,10]},{name:'الدرجات',rows:rD,widths:[22,26,16,24,10,10,14]},{name:'الأكواد',rows:rC,widths:[14,26,16,12,14]}]}
 
+const EXT={},ADM_TTL=90*86400e3,RLI={},RLU={};
+const rlIp=q=>String((q.headers['x-forwarded-for']||q.socket.remoteAddress||'')).split(',')[0].trim().slice(0,60);
+const rlHit=(m,k,max,win)=>{const e=m[k];const n=Date.now();if(!e||n-e.t>win){return false}return e.n>=max};
+const rlFail=(m,k,win)=>{const n=Date.now(),e=m[k];if(!e||n-e.t>win)m[k]={n:1,t:n};else e.n++;if(Object.keys(m).length>2000)for(const x of Object.keys(m))if(n-m[x].t>win)delete m[x]};
 const srv=http.createServer(async(q,r)=>{
- const u=new URL(q.url,'http://x'),p=u.pathname,tok=(q.headers.authorization||'').replace('Bearer ','')||(p==='/api/export'?(u.searchParams.get('t')||''):'');
- const sess=db.sessions[tok],isAdmin=sess&&sess.role==='admin',isStudent=sess&&sess.role==='student';
+ const u=new URL(q.url,'http://x'),p=u.pathname;let tok=(q.headers.authorization||'').replace('Bearer ','');
+ if(!tok&&p==='/api/export'){const tk=EXT[u.searchParams.get('t')||''];if(tk&&tk.exp>Date.now())tok=tk.tok}
+ let sess=db.sessions[tok];
+ if(sess&&sess.role==='admin'){const nw=Date.now();if(sess.seen&&nw-sess.seen>ADM_TTL){delete db.sessions[tok];sess=null}else if(!sess.seen||nw-sess.seen>3600e3)sess.seen=nw}
+ const isAdmin=sess&&sess.role==='admin',isStudent=sess&&sess.role==='student';
  if(isAdmin&&q.method==='POST'&&p.startsWith('/api/'))r.wt=true;
  try{
  if(p==='/api/export'){if(!isAdmin){r.writeHead(401);return r.end('login required')}
@@ -345,11 +352,13 @@ const srv=http.createServer(async(q,r)=>{
   if(p==='/api/logout'&&q.method==='POST'){delete db.sessions[tok];save();return json(r,200,{ok:1});}
   if(p==='/api/login'&&q.method==='POST'){
    const b=await body(q);
-   if(b.role==='admin'){ const un=String(b.username||'').trim().toLowerCase();let who=null;
+   if(b.role==='admin'){ const un=String(b.username||'').trim().toLowerCase().slice(0,60);let who=null;const ip=rlIp(q),WIN=15*60e3;
+     if(rlHit(RLI,ip,8,WIN)||rlHit(RLU,un,40,WIN)){return json(r,429,{error:'too many attempts'})}
      for(const [u,p] of ENVADM)if(seq(u.toLowerCase(),un)&seq(p,b.password||''))who=u;
      for(const a of (db.admins||[]))if(a.user===un&&seq(a.hash,hashPw(b.password||'',a.salt)))who=a.user;
-     if(!who) return json(r,401,{error:'bad credentials'});
-     const t=id()+id();db.sessions[t]={role:'admin',user:who};save();return json(r,200,{token:t,role:'admin'});}
+     if(!who){rlFail(RLI,ip,WIN);rlFail(RLU,un,WIN);await new Promise(z=>setTimeout(z,500));return json(r,401,{error:'bad credentials'})}
+     delete RLI[ip];
+     const t=id()+id();db.sessions[t]={role:'admin',user:who,seen:Date.now()};save();return json(r,200,{token:t,role:'admin'});}
    const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());
    if(!c||c.disabled) return json(r,401,{error:'invalid code'});
    if(db.settings.closed) return json(r,423,{error:'closed'});
@@ -398,6 +407,7 @@ const srv=http.createServer(async(q,r)=>{
    const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80),posts:Array.isArray(b.posts)?b.posts.slice(0,4).map(x=>({id:String((x&&x.id)||'').slice(0,40),title:String((x&&x.title)||'').slice(0,40),text:String((x&&x.text)||'').slice(0,30),pct:+(x&&x.pct)||0,at:+(x&&x.at)||0})):[]});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
   if(p==='/api/my-grades'&&isStudent){let st=null,gn='',gg=null;for(const g of allGroups()){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;gg=g;break}}if(!st)return json(r,200,{linked:false,grades:[]});const gl=(gg.exams||[]).filter(e=>st.id in (e.scores||{})).map(e=>{const v=e.scores[st.id];return v==='abs'?{id:e.id,title:e.title,score:'غايب',max:'',date:e.date}:{id:e.id,title:e.title,score:v,max:e.max?e.max:'',date:e.date}}).sort((a,b)=>b.date-a.date);return json(r,200,{linked:true,name:st.name,group:gn,grades:gl});}
   if(!isAdmin) return json(r,403,{error:'admin only'});
+  if(p==='/api/export-ticket'&&q.method==='POST'){const tk=id()+id();EXT[tk]={tok,exp:Date.now()+90e3};for(const k of Object.keys(EXT))if(EXT[k].exp<Date.now())delete EXT[k];return json(r,200,{t:tk});}
   if(p==='/api/admins'&&q.method==='GET') return json(r,200,{me:sess.user||'',list:ENVADM.map(x=>({user:x[0],src:'env'})).concat((db.admins||[]).map(a=>({user:a.user,email:a.email||'',by:a.by||'',src:'app'})))});
   if(p==='/api/admins/add'&&q.method==='POST'){const b=await body(q),u=String(b.username||'').trim().toLowerCase(),pw=String(b.password||''),em=String(b.email||'').trim().slice(0,80);
    if(!/^[a-z0-9_.]{3,30}$/.test(u)) return json(r,400,{error:'اسم المستخدم حروف إنجليزي وأرقام (3 على الأقل)'});
