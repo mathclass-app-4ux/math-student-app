@@ -79,8 +79,11 @@ db.ws=db.ws||{};db.wsOf=db.wsOf||{};
 if(db.mg){const ow=(ENVADM[1]?ENVADM[1][0]:ENVADM[0][0]).toLowerCase();if(!db.ws[ow])db.ws[ow]=db.mg;delete db.mg}
 const uOf=se=>String((se&&se.user)||ENVADM[0][0]).toLowerCase();
 const wsId=u=>db.wsOf[u]||u;
-const WS=u=>{const k=wsId(u);return db.ws[k]||(db.ws[k]={groups:[],att:{},pay:{}})};
-const allGroups=()=>Object.values(db.ws).flatMap(w=>w.groups);
+const dkey=t=>{const d=new Date((+t||0)+3*3600e3);return d.toISOString().slice(0,10)};
+const numOrStr=v=>{const n=+v;return String(v).trim()!==''&&isFinite(n)?n:String(v)};
+function migGrades(M){for(const g of M.groups||[]){g.exams=g.exams||[];for(const st of g.students||[]){if(st.gm||!(st.grades&&st.grades.length)){st.gm=1;continue}for(const gr of st.grades){const mx=Math.max(0,+gr.max||0);let ex=g.exams.find(e=>e.title===gr.title&&(+e.max||0)===mx&&dkey(e.date)===dkey(gr.date));if(!ex){ex={id:id(),title:gr.title,max:mx,date:gr.date||Date.now(),scores:{}};g.exams.push(ex)}if(!(st.id in ex.scores)&&String(gr.score||'').trim()!=='')ex.scores[st.id]=numOrStr(gr.score)}st.gm=1}}}
+const WS=u=>{const k=wsId(u);const w=db.ws[k]||(db.ws[k]={groups:[],att:{},pay:{}});migGrades(w);return w};
+const allGroups=()=>Object.values(db.ws).flatMap(w=>{migGrades(w);return w.groups});
 const SIGN={};
 FB.setDb(()=>db);
 const save=()=>{if(FB.on)FB.mark();else fs.writeFileSync(DB,JSON.stringify(db))};
@@ -287,10 +290,10 @@ function exportSheets(M,codes){
   const months=[...new Set(Object.keys(pay).filter(k=>k.startsWith(g.id+'|')).map(k=>k.slice(g.id.length+1)))].sort();
   const dates=Object.keys(att).filter(k=>k.startsWith(g.id+'|')).map(k=>k.slice(g.id.length+1)).sort();
   for(const s of g.students||[]){
-   rS.push([g.name,s.name,s.phone||'',s.code||'',(s.grades||[]).length]);
+   rS.push([g.name,s.name,s.phone||'',s.code||'',(g.exams||[]).filter(e=>s.id in (e.scores||{})).length]);
    for(const m of months){const d=(pay[g.id+'|'+m]||{})[s.id];rP.push([g.name,s.name,s.phone||'',m,d?'دفع':'لم يدفع',d&&d!==''?String(d):''])}
    for(const d of dates){const st=(att[g.id+'|'+d]||{})[s.id];if(st)rA.push([g.name,s.name,s.phone||'',d,st==='present'?'حضر':'غاب'])}
-   for(const gr of s.grades||[])rD.push([g.name,s.name,s.phone||'',gr.title,gr.score,gr.max,fdate(gr.date)])
+   for(const e of g.exams||[]){if(s.id in (e.scores||{})){const v=e.scores[s.id];rD.push([g.name,s.name,s.phone||'',e.title,v==='abs'?'غايب':v,e.max||'',fdate(e.date)])}}
   }}
  for(const c of codes||[])rC.push([c.code,(c.student&&c.student.name)||c.label||'',(c.student&&c.student.phone)||'',c.disabled?'موقوف':'شغال',fdate(c.created)]);
  return [{name:'المجموعات',rows:rG,widths:[24,16,12,40]},{name:'الطلاب',rows:rS,widths:[22,26,16,14,12]},{name:'الدفع',rows:rP,widths:[22,26,16,12,12,14]},{name:'الحضور',rows:rA,widths:[22,26,16,14,10]},{name:'الدرجات',rows:rD,widths:[22,26,16,24,10,10,14]},{name:'الأكواد',rows:rC,widths:[14,26,16,12,14]}]}
@@ -393,7 +396,7 @@ const srv=http.createServer(async(q,r)=>{
    return json(r,out.error==='empty'?400:out.error?502:200,out);}
   if(p==='/api/security-event'&&isStudent&&q.method==='POST'){
    const b=await body(q);db.logs.unshift({date:Date.now(),code:me.code,name:me.student?me.student.name:'',phone:me.student?me.student.phone:'',type:String(b.type||'screenshot').slice(0,30),where:String(b.where||'').slice(0,80),posts:Array.isArray(b.posts)?b.posts.slice(0,4).map(x=>({id:String((x&&x.id)||'').slice(0,40),title:String((x&&x.title)||'').slice(0,40),text:String((x&&x.text)||'').slice(0,30),pct:+(x&&x.pct)||0,at:+(x&&x.at)||0})):[]});db.logs=db.logs.slice(0,500);save();return json(r,200,{ok:1});}
-  if(p==='/api/my-grades'&&isStudent){let st=null,gn='';for(const g of allGroups()){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;break}}if(!st)return json(r,200,{linked:false,grades:[]});return json(r,200,{linked:true,name:st.name,group:gn,grades:(st.grades||[]).slice().sort((a,b)=>b.date-a.date)});}
+  if(p==='/api/my-grades'&&isStudent){let st=null,gn='',gg=null;for(const g of allGroups()){st=g.students.find(x=>x.code===me.code);if(st){gn=g.name;gg=g;break}}if(!st)return json(r,200,{linked:false,grades:[]});const gl=(gg.exams||[]).filter(e=>st.id in (e.scores||{})).map(e=>{const v=e.scores[st.id];return v==='abs'?{id:e.id,title:e.title,score:'غايب',max:'',date:e.date}:{id:e.id,title:e.title,score:v,max:e.max?e.max:'',date:e.date}}).sort((a,b)=>b.date-a.date);return json(r,200,{linked:true,name:st.name,group:gn,grades:gl});}
   if(!isAdmin) return json(r,403,{error:'admin only'});
   if(p==='/api/admins'&&q.method==='GET') return json(r,200,{me:sess.user||'',list:ENVADM.map(x=>({user:x[0],src:'env'})).concat((db.admins||[]).map(a=>({user:a.user,email:a.email||'',by:a.by||'',src:'app'})))});
   if(p==='/api/admins/add'&&q.method==='POST'){const b=await body(q),u=String(b.username||'').trim().toLowerCase(),pw=String(b.password||''),em=String(b.email||'').trim().slice(0,80);
@@ -440,15 +443,17 @@ const srv=http.createServer(async(q,r)=>{
    else if(b.op==='editGroup'){if(S(b.name))g.name=S(b.name);g.fee=Math.max(0,+b.fee||0);}
    else if(b.op==='delGroup'){M.groups=M.groups.filter(x=>x!==g);for(const k of Object.keys(M.att))if(k.startsWith(g.id+'|'))delete M.att[k];for(const k of Object.keys(M.pay))if(k.startsWith(g.id+'|'))delete M.pay[k];}
    else if(b.op==='addStudent'){if(!S(b.name))return json(r,400,{error:'name'});g.students.push({id:id(),name:S(b.name),phone:String(b.phone||'').replace(/[^0-9]/g,'').slice(0,20),photo:b.photo?saveImg(b.photo):null});}
-   else if(b.op==='moveStudent'){const st=g.students.find(x=>x.id===b.sid),t=M.groups.find(x=>x.id===b.to);if(!st||!t||t===g)return json(r,400,{error:'group'});g.students=g.students.filter(x=>x!==st);t.students.push(st);for(const T of [M.att,M.pay])for(const k of Object.keys(T)){if(!k.startsWith(g.id+'|')||!T[k]||!(b.sid in T[k]))continue;const nk=t.id+'|'+k.slice(g.id.length+1);T[nk]=T[nk]||{};T[nk][b.sid]=T[k][b.sid];delete T[k][b.sid];if(!Object.keys(T[k]).length)delete T[k];}}
-   else if(b.op==='delStudent'){g.students=g.students.filter(x=>x.id!==b.sid);}
+   else if(b.op==='moveStudent'){const st=g.students.find(x=>x.id===b.sid),t=M.groups.find(x=>x.id===b.to);if(!st||!t||t===g)return json(r,400,{error:'group'});g.students=g.students.filter(x=>x!==st);t.students.push(st);t.exams=t.exams||[];for(const e of g.exams||[]){if(!(b.sid in (e.scores||{})))continue;const mx=+e.max||0;let ne=t.exams.find(x=>x.title===e.title&&(+x.max||0)===mx&&dkey(x.date)===dkey(e.date));if(!ne){ne={id:id(),title:e.title,max:mx,date:e.date,scores:{}};t.exams.push(ne)}if(b.sid in ne.scores)continue;ne.scores[b.sid]=e.scores[b.sid];delete e.scores[b.sid]}for(const T of [M.att,M.pay])for(const k of Object.keys(T)){if(!k.startsWith(g.id+'|')||!T[k]||!(b.sid in T[k]))continue;const nk=t.id+'|'+k.slice(g.id.length+1);T[nk]=T[nk]||{};T[nk][b.sid]=T[k][b.sid];delete T[k][b.sid];if(!Object.keys(T[k]).length)delete T[k];}}
+   else if(b.op==='delStudent'){g.students=g.students.filter(x=>x.id!==b.sid);for(const e of g.exams||[])delete (e.scores||{})[b.sid];}
    else if(b.op==='editStudent'){const st=g.students.find(x=>x.id===b.sid);if(!st||!S(b.name))return json(r,400,{error:'student'});st.name=S(b.name);st.phone=String(b.phone||'').replace(/[^0-9]/g,'').slice(0,20);if(b.photo){const f=saveImg(b.photo);if(f)st.photo=f}else if(b.rmPhoto)st.photo=null;}
    else if(b.op==='reorder'){const o=Array.isArray(b.order)?b.order:[];const mp=new Map(g.students.map(x=>[x.id,x]));const ns=[];for(const i of o)if(mp.has(i)){ns.push(mp.get(i));mp.delete(i)}for(const x of mp.values())ns.push(x);g.students=ns;}
    else if(b.op==='linkCode'){const st=g.students.find(x=>x.id===b.sid);const c=db.codes.find(x=>x.code===String(b.code||'').trim().toUpperCase());if(!st)return json(r,400,{error:'student'});if(!c)return json(r,400,{error:'الكود غير موجود'});if(allGroups().some(x=>x.students.some(y=>y.code===c.code&&y!==st)))return json(r,400,{error:'الكود مربوط بطالب تاني'});st.code=c.code;}
    else if(b.op==='newCode'){const st=g.students.find(x=>x.id===b.sid);if(!st)return json(r,400,{error:'student'});if(st.code)return json(r,400,{error:'مربوط بكود بالفعل'});const c={code:newCode(),label:st.name,maxDevices:1,devices:[],disabled:false,created:Date.now(),student:{name:st.name,phone:st.phone,photo:st.photo||null,date:Date.now()}};db.codes.push(c);st.code=c.code;}
    else if(b.op==='unlink'){const st=g.students.find(x=>x.id===b.sid);if(st)delete st.code;}
-   else if(b.op==='addGrade'){const st=g.students.find(x=>x.id===b.sid);const t=S(b.title);if(!st||!t)return json(r,400,{error:'title'});const sc=String(b.score||'').slice(0,10),mx=String(b.max||'').slice(0,10);st.grades=st.grades||[];st.grades.push({id:id(),title:t,score:sc,max:mx,date:Date.now()});}
-   else if(b.op==='delGrade'){const st=g.students.find(x=>x.id===b.sid);if(st)st.grades=(st.grades||[]).filter(x=>x.id!==b.gr);}
+   else if(b.op==='addExam'){const t=S(b.title);if(!t)return json(r,400,{error:'اكتب اسم الامتحان'});const mx=+b.max;if(!(mx>0))return json(r,400,{error:'اكتب الدرجة النهائية'});g.exams=g.exams||[];g.exams.push({id:id(),title:t,max:mx,date:Date.now(),scores:{}});}
+   else if(b.op==='editExam'){const e=(g.exams||[]).find(x=>x.id===b.xid);if(!e)return json(r,404,{error:'exam'});const t=S(b.title),mx=+b.max;if(!t)return json(r,400,{error:'اكتب اسم الامتحان'});if(!(mx>0))return json(r,400,{error:'اكتب الدرجة النهائية'});if(Object.values(e.scores||{}).some(v=>typeof v==='number'&&v>mx))return json(r,400,{error:'فيه درجات أكبر من الدرجة النهائية الجديدة'});e.title=t;e.max=mx;}
+   else if(b.op==='delExam'){g.exams=(g.exams||[]).filter(x=>x.id!==b.xid);}
+   else if(b.op==='setScore'){const e=(g.exams||[]).find(x=>x.id===b.xid);if(!e||!g.students.some(x=>x.id===b.sid))return json(r,404,{error:'exam'});e.scores=e.scores||{};const v=String(b.score==null?'':b.score).trim();if(v==='')delete e.scores[b.sid];else if(v==='abs')e.scores[b.sid]='abs';else{const n=+v;if(!isFinite(n)||n<0)return json(r,400,{error:'درجة غير صحيحة'});if(e.max>0&&n>e.max)return json(r,400,{error:'الدرجة أكبر من الدرجة النهائية ('+e.max+')'});e.scores[b.sid]=n}}
    else if(b.op==='fromCodes'){const have=new Set(allGroups().flatMap(x=>x.students.map(y=>y.code).filter(Boolean)));for(const c of db.codes)if(c.student&&!have.has(c.code))g.students.push({id:id(),name:c.student.name,phone:c.student.phone,code:c.code,photo:c.student.photo||null});}
    else if(b.op==='addSched'){const dy=+b.day,tm=String(b.time||''),du=Math.min(600,Math.max(10,+b.dur||60));if(!(dy>=0&&dy<=6)||!/^\d{2}:\d{2}$/.test(tm))return json(r,400,{error:'sched'});g.sched=g.sched||[];g.sched.push({id:id(),day:dy,time:tm,dur:du});}
    else if(b.op==='delSched'){g.sched=(g.sched||[]).filter(x=>x.id!==b.sid);}
