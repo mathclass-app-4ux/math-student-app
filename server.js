@@ -6,7 +6,7 @@ const on=!!(K&&K.project_id&&K.private_key&&K.client_email);
 const CH=600000;
 const BASE=on?`https://firestore.googleapis.com/v1/projects/${K.project_id}/databases/(default)/documents`:'';
 let tok='',tokExp=0;
-function rq(u,m,h,b){return new Promise((res,rej)=>{const q=https.request(u,{method:m,headers:h},s=>{let d='';s.on('data',c=>d+=c);s.on('end',()=>res({c:s.statusCode,d}))});q.on('error',rej);q.setTimeout(30000,()=>q.destroy(new Error('timeout')));if(b)q.write(b);q.end()})}
+function rq(u,m,h,b){return new Promise((res,rej)=>{const q=https.request(u,{method:m,headers:h},s=>{const bs=[];s.on('data',c=>bs.push(c));s.on('end',()=>res({c:s.statusCode,d:Buffer.concat(bs).toString('utf8')}))});q.on('error',rej);q.setTimeout(30000,()=>q.destroy(new Error('timeout')));if(b)q.write(b);q.end()})}
 async function token(){
  if(tok&&Date.now()<tokExp-60000)return tok;
  const b=o=>Buffer.from(JSON.stringify(o)).toString('base64url'),now=Math.floor(Date.now()/1000);
