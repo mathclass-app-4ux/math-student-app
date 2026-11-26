@@ -82,7 +82,8 @@ const wsId=u=>db.wsOf[u]||u;
 const dkey=t=>{const d=new Date((+t||0)+3*3600e3);return d.toISOString().slice(0,10)};
 const numOrStr=v=>{const n=+v;return String(v).trim()!==''&&isFinite(n)?n:String(v)};
 function migGrades(M){for(const g of M.groups||[]){g.exams=g.exams||[];for(const st of g.students||[]){if(st.gm||!(st.grades&&st.grades.length)){st.gm=1;continue}for(const gr of st.grades){const mx=Math.max(0,+gr.max||0);let ex=g.exams.find(e=>e.title===gr.title&&(+e.max||0)===mx&&dkey(e.date)===dkey(gr.date));if(!ex){ex={id:id(),title:gr.title,max:mx,date:gr.date||Date.now(),scores:{}};g.exams.push(ex)}if(!(st.id in ex.scores)&&String(gr.score||'').trim()!=='')ex.scores[st.id]=numOrStr(gr.score)}st.gm=1}}}
-const WS=u=>{const k=wsId(u);const w=db.ws[k]||(db.ws[k]={groups:[],att:{},pay:{}});migGrades(w);return w};
+const FIXT=new Set(["427194e6e414", "6cfffb6825a5", "e03edc49cebe", "9e797599f2c4", "38d0da2fafad", "64da4abc2967", "4b7498f2ef24", "773b90d4cc9a", "a1c16ea69f72", "5ab8370eb4e4", "8aabcf38d001", "72878d5172a0", "6feba1a03036", "f013b929221c", "44aefa38be45", "16d7378aab82", "750857b1f9bd", "cd7a1a141a7e", "f56722fa08d4", "8298dc50c13a", "6f729ed0c83b", "e383947ae7ba", "eefc7f159072", "5f81b5f9a69d"]);const migSched=w=>{let ch=0;for(const g of w.groups||[])for(const x of g.sched||[])if(FIXT.has(x.id)&&!x.fx){const[h,m]=String(x.time).split(':');if(+h<8){x.t0=x.time;x.time=String(+h+12).padStart(2,'0')+':'+m}x.fx=1;ch++}if(ch)save()};
+const WS=u=>{const k=wsId(u);const w=db.ws[k]||(db.ws[k]={groups:[],att:{},pay:{}});migGrades(w);migSched(w);return w};
 const allGroups=()=>Object.values(db.ws).flatMap(w=>{migGrades(w);return w.groups});
 const SIGN={};
 FB.setDb(()=>db);
