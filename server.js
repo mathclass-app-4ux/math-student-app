@@ -1,3 +1,69 @@
+const FB=(()=>{const module={exports:{}};
+// Firestore persistence (REST, no dependencies). Active only when FIREBASE_SA env holds the service-account JSON.
+const crypto=require('crypto'),https=require('https'),fs=require('fs'),path=require('path');
+let K=null;try{if(process.env.FIREBASE_SA)K=JSON.parse(process.env.FIREBASE_SA)}catch(e){console.log('FIREBASE_SA invalid json')}
+const on=!!(K&&K.project_id&&K.private_key&&K.client_email);
+const CH=600000;
+const BASE=on?`https://firestore.googleapis.com/v1/projects/${K.project_id}/databases/(default)/documents`:'';
+let tok='',tokExp=0;
+function rq(u,m,h,b){return new Promise((res,rej)=>{const q=https.request(u,{method:m,headers:h},s=>{let d='';s.on('data',c=>d+=c);s.on('end',()=>res({c:s.statusCode,d}))});q.on('error',rej);q.setTimeout(30000,()=>q.destroy(new Error('timeout')));if(b)q.write(b);q.end()})}
+async function token(){
+ if(tok&&Date.now()<tokExp-60000)return tok;
+ const b=o=>Buffer.from(JSON.stringify(o)).toString('base64url'),now=Math.floor(Date.now()/1000);
+ const h=b({alg:'RS256',typ:'JWT'})+'.'+b({iss:K.client_email,scope:'https://www.googleapis.com/auth/datastore',aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+3000});
+ const sig=crypto.sign('RSA-SHA256',Buffer.from(h),K.private_key).toString('base64url');
+ const r=await rq('https://oauth2.googleapis.com/token','POST',{'Content-Type':'application/x-www-form-urlencoded'},'grant_type='+encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')+'&assertion='+h+'.'+sig);
+ if(r.c!==200)throw new Error('token '+r.c);
+ const j=JSON.parse(r.d);tok=j.access_token;tokExp=Date.now()+(j.expires_in||3000)*1000;return tok;
+}
+async function api(m,p,body){const t=await token();const r=await rq(BASE+p,m,{Authorization:'Bearer '+t,'Content-Type':'application/json'},body?JSON.stringify(body):undefined);if(r.c>=300)throw new Error(m+' '+p.slice(0,40)+' '+r.c+' '+r.d.slice(0,120));return r.d?JSON.parse(r.d):{}}
+async function commit(writes){for(let i=0;i<writes.length;i+=400){await api('POST',':commit',{writes:writes.slice(i,i+400)})}}
+const dn=(col,id)=>`projects/${K.project_id}/databases/(default)/documents/${col}/${id}`;
+async function listAll(col){const out=[];let pt='';do{const r=await api('GET','/'+col+'?pageSize=200'+(pt?'&pageToken='+encodeURIComponent(pt):''));(r.documents||[]).forEach(d=>out.push(d.fields));pt=r.nextPageToken||''}while(pt);return out}
+const written={};   // key -> {h,n}
+const dirty=new Set(),imgQ=[];let timer=null,busy=false,lastHot=0;
+const HOT=new Set(['sessions','cache','stats','solves']);
+let getDb=()=>({}),froze=false;
+function mark(keys){if(!on)return;(keys||Object.keys(getDb())).forEach(k=>dirty.add(k));if(!timer)timer=setTimeout(()=>{timer=null;flush().catch(e=>console.log('fb flush',e.message))},3000)}
+async function flush(force){
+ if(!on||froze)return false;
+ if(busy){if(!force)return false;while(busy)await new Promise(r=>setTimeout(r,50))}
+ busy=true;let okk=true;
+ try{
+  const db=getDb(),w=[];
+  const hotOk=force||Date.now()-lastHot>30000;
+  for(const k of [...dirty]){
+   if(HOT.has(k)&&!hotOk&&dirty.size>0&&k!=='sessions'){continue}
+   const s=JSON.stringify(db[k]===undefined?null:db[k]),h=crypto.createHash('md5').update(s).digest('hex');
+   dirty.delete(k);if(written[k]&&written[k].h===h)continue;
+   if(HOT.has(k))lastHot=Date.now();
+   const n=Math.max(1,Math.ceil(s.length/CH));
+   for(let i=0;i<n;i++)w.push({update:{name:dn('kv',k+'_'+i),fields:{k:{stringValue:k},i:{integerValue:String(i)},n:{integerValue:String(n)},s:{stringValue:s.slice(i*CH,(i+1)*CH)}}}});
+   const old=written[k]?written[k].n:0;for(let i=n;i<old;i++)w.push({delete:dn('kv',k+'_'+i)});
+   written[k]={h,n};
+  }
+  while(imgQ.length){const {f,buf}=imgQ.shift();const s=buf.toString('base64'),n=Math.max(1,Math.ceil(s.length/CH));for(let i=0;i<n;i++)w.push({update:{name:dn('img',f.replace(/\./g,'_')+'_'+i),fields:{f:{stringValue:f},i:{integerValue:String(i)},n:{integerValue:String(n)},s:{stringValue:s.slice(i*CH,(i+1)*CH)}}}})}
+  if(w.length)await commit(w);
+  if([...dirty].some(k=>HOT.has(k)))setTimeout(()=>mark([]),31000);
+ }catch(e){okk=false;console.log('fb error',e.message);Object.keys(getDb()).forEach(k=>{if(!HOT.has(k))dirty.add(k)});setTimeout(()=>mark([]),20000)}
+ finally{busy=false}
+ return okk;
+}
+async function sync(){if(!on)return true;if(froze)return false;mark([]);Object.keys(getDb()).forEach(k=>dirty.add(k));if(timer){clearTimeout(timer);timer=null}let ok=await flush(true);if(!ok)ok=await flush(true);return ok}
+async function load(UP,target){
+ if(!on)return false;
+ const kv=await listAll('kv'),by={};
+ kv.forEach(f=>{const k=f.k.stringValue;(by[k]=by[k]||[])[+f.i.integerValue]=f.s.stringValue});
+ let got=0;
+ for(const k of Object.keys(by)){const s=by[k].join('');try{target[k]=JSON.parse(s);written[k]={h:crypto.createHash('md5').update(s).digest('hex'),n:by[k].length};got++}catch(e){console.log('fb bad key',k)}}
+ const im=await listAll('img'),bf={};
+ im.forEach(f=>{const k=f.f.stringValue;(bf[k]=bf[k]||[])[+f.i.integerValue]=f.s.stringValue});
+ let ni=0;for(const f of Object.keys(bf)){try{const fp=path.join(UP,path.basename(f));if(!fs.existsSync(fp)){fs.writeFileSync(fp,Buffer.from(bf[f].join(''),'base64'))}ni++}catch(e){}}
+ console.log('firestore loaded keys',got,'images',ni);return got>0;
+}
+module.exports={sync,freeze:()=>{froze=true;console.log('firestore frozen: no writes (load failed)')},on,mark,flush,load,img:(f,buf)=>{if(!on)return;imgQ.push({f,buf});mark([])},setDb:g=>{getDb=g}};
+
+return module.exports})();
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const ENVADM=[[process.env.ADMIN_USER||'admin',process.env.ADMIN_PASSWORD||'change-me']];for(let n=2;n<=9;n++){const u=process.env['ADMIN'+n+'_USER'],p=process.env['ADMIN'+n+'_PASSWORD'];if(u&&p)ENVADM.push([u,p])}
 const seq=(a,b)=>{const x=crypto.createHash('sha256').update(String(a)).digest(),y=crypto.createHash('sha256').update(String(b)).digest();return crypto.timingSafeEqual(x,y)};
@@ -16,18 +82,22 @@ const wsId=u=>db.wsOf[u]||u;
 const WS=u=>{const k=wsId(u);return db.ws[k]||(db.ws[k]={groups:[],att:{},pay:{}})};
 const allGroups=()=>Object.values(db.ws).flatMap(w=>w.groups);
 const SIGN={};
-const save=()=>fs.writeFileSync(DB,JSON.stringify(db));
+FB.setDb(()=>db);
+const save=()=>{if(FB.on)FB.mark();else fs.writeFileSync(DB,JSON.stringify(db))};
+process.on('SIGTERM',()=>{FB.flush().finally(()=>process.exit(0))});
 const LINKS={whatsapp:'https://wa.me/201142104969',facebook:[
  {name:'Page 1',url:'https://www.facebook.com/share/1J3ZLst87q/'},
  {name:'Group',url:'https://www.facebook.com/share/g/14wPVxcD8uP/'},
  {name:'Page 2',url:'https://www.facebook.com/share/1JDvGSC1Cd/'}],phone:'01142104969'};
 const SOLVER_KEY=process.env.SOLVER_KEY||'mrk-solver-7f3a9c',SOLVER_DAY_ALL=+process.env.SOLVER_DAY_ALL||1800,SOLVER_DAY_DEV=+process.env.SOLVER_DAY_DEV||12,SOLVER_DAY_IP=+process.env.SOLVER_DAY_IP||30;let SL={d:'',all:0,dev:{},ip:{}};
 const id=()=>crypto.randomBytes(6).toString('hex');
-const json=(r,c,o)=>{r.writeHead(c,{'Content-Type':'application/json','Cache-Control':'no-store'});r.end(JSON.stringify(o))};
+const json=(r,c,o)=>{const send=(c2,o2,h)=>{r.writeHead(c2,Object.assign({'Content-Type':'application/json','Cache-Control':'no-store'},h||{}));r.end(JSON.stringify(o2))};
+ if(r.wt&&FB.on&&c<300){FB.sync().then(ok=>ok?send(c,o,{'X-Saved':'1'}):send(500,{error:'فشل الحفظ على Firebase، حاول تاني',saveFailed:1})).catch(()=>send(500,{error:'فشل الحفظ على Firebase، حاول تاني',saveFailed:1}));return}
+ if(r.wt&&c<300)return send(c,o,{'X-Saved':'1'});send(c,o)};
 const body=q=>new Promise(res=>{let b=[],n=0;q.on('data',d=>{n+=d.length;if(n<12e6)b.push(d)});q.on('end',()=>{try{res(JSON.parse(Buffer.concat(b)))}catch{res({})}})});
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp'};
 const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',newCode=()=>{let s='';for(let i=0;i<8;i++)s+=A[crypto.randomInt(A.length)];return s};
-const saveImg=im=>{const m=/^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(im||'');if(!m)return null;const f=id()+'.'+(m[1]==='jpeg'?'jpg':m[1]);fs.writeFileSync(path.join(UP,f),Buffer.from(m[2],'base64'));return f};
+const saveImg=im=>{const m=/^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(im||'');if(!m)return null;const f=id()+'.'+(m[1]==='jpeg'?'jpg':m[1]);{const bf=Buffer.from(m[2],'base64');fs.writeFileSync(path.join(UP,f),bf);FB.img(f,bf)}return f};
 const isApp=q=>(q.headers['user-agent']||'').includes('MathAppAPK');
 const day=()=>new Date().toISOString().slice(0,10);
 const nrm=t=>String(t||'').toLowerCase().replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[\s$\\{}]+/g,'').replace(/[.,،؟?!:;]+$/g,'');
@@ -181,9 +251,10 @@ async function solve(text,image,opt){
  if(fin==='MAX_TOKENS') out.truncated=true;
  return out;
 }
-http.createServer(async(q,r)=>{
+const srv=http.createServer(async(q,r)=>{
  const u=new URL(q.url,'http://x'),p=u.pathname,tok=(q.headers.authorization||'').replace('Bearer ','');
  const sess=db.sessions[tok],isAdmin=sess&&sess.role==='admin',isStudent=sess&&sess.role==='student';
+ if(isAdmin&&q.method==='POST'&&p.startsWith('/api/'))r.wt=true;
  try{
  if(p.startsWith('/api/')){
   if(p==='/api/solver'){
@@ -336,4 +407,6 @@ http.createServer(async(q,r)=>{
  const f=path.join(__dirname,{'/':'index.html','/admin':'manage.html','/manage':'manage.html','/style.css':'style.css','/sw.js':'sw.js'}[p]||'404');
  fs.readFile(f,(e,d)=>{if(e){r.writeHead(404);return r.end('not found')}r.writeHead(200,{'Content-Type':types[path.extname(f)]||'application/octet-stream'});r.end(d)});
  }catch(e){console.error(e);if(!r.headersSent)json(r,500,{error:'server'})}
-}).listen(PORT,()=>console.log('http://localhost:'+PORT));
+});
+(async()=>{try{if(FB.on){let ok=false,er;for(let i=0;i<4&&!ok;i++){try{await FB.load(UP,db);ok=true}catch(e){er=e;await new Promise(r=>setTimeout(r,3000))}}if(!ok){FB.freeze();throw er}db.ws=db.ws||{};db.wsOf=db.wsOf||{};console.log('storage: firestore')}else console.log('storage: local file')}catch(e){console.log('firestore load failed:',e.message)}
+srv.listen(PORT,()=>console.log('http://localhost:'+PORT))})();
